@@ -372,13 +372,41 @@ document.querySelector('#s2SearchBtn').addEventListener('click', async () => {
   }
 });
 
-// Initial data load
-updateStatus('Application started. Loading initial data...');
-const initialDays = parseInt(document.querySelector('#fireDays').value);
-loadFIRMS('viirs', viirsLayer, initialDays);
-loadFRP();
+// Initial data load - fetch config and center map
+async function initializeApp() {
+  updateStatus('Application started. Loading configuration...');
+  
+  try {
+    // Fetch server config to get current bbox/center
+    const configRes = await fetch('/api/config');
+    const config = await configRes.json();
+    
+    // Center map on configured region
+    if (config.center) {
+      const [lat, lon] = config.center;
+      map.setView([lat, lon], 7);
+      updateStatus(`Map centered on configured region (${lat.toFixed(2)}, ${lon.toFixed(2)})`);
+    }
+    
+    // Load initial fire data
+    const initialDays = parseInt(document.querySelector('#fireDays').value);
+    loadFIRMS('viirs', viirsLayer, initialDays);
+    loadFRP();
+    
+    // Add helpful info
+    setTimeout(() => {
+      updateStatus('Tip: Use the time period selector to view historical fire data', 'info');
+    }, 3000);
+  } catch (error) {
+    console.error('Error initializing app:', error);
+    updateStatus('Error loading configuration, using default map view', 'warning');
+    
+    // Fallback to default behavior
+    const initialDays = parseInt(document.querySelector('#fireDays').value);
+    loadFIRMS('viirs', viirsLayer, initialDays);
+    loadFRP();
+  }
+}
 
-// Add helpful info
-setTimeout(() => {
-  updateStatus('Tip: Use the time period selector to view historical fire data', 'info');
-}, 3000);
+// Start the application
+initializeApp();

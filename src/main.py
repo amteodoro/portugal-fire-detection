@@ -26,6 +26,19 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     async def health():
         return {"status": "ok"}
+    
+    @app.get("/api/config")
+    async def config():
+        from src.utils.geo import parse_bbox
+        bbox = parse_bbox(settings.PORTUGAL_BBOX)
+        lon_min, lat_min, lon_max, lat_max = bbox
+        center_lat = (lat_min + lat_max) / 2
+        center_lon = (lon_min + lon_max) / 2
+        return {
+            "bbox": list(bbox),
+            "center": [center_lat, center_lon],
+            "app_name": settings.APP_NAME
+        }
 
     app.include_router(firms.router, prefix="/api/firms", tags=["FIRMS"])
     app.include_router(eumetsat.router, prefix="/api/eumetsat", tags=["EUMETSAT"])
