@@ -27,26 +27,49 @@ def _unify_confidence(product: str, value: str) -> float | None:
 
 def _parse_csv(product: str, content: bytes) -> list[dict]:
     rows = []
-    reader = csv.DictReader(io.StringIO(content.decode("utf-8")))
-    for r in reader:
-        lat = float(r.get("latitude"))
-        lon = float(r.get("longitude"))
-        date = r.get("acq_date")
-        time_ = r.get("acq_time")
-        dt = f"{date}T{time_[:2]}:{time_[2:]}:00Z" if date and time_ else datetime.now(timezone.utc).isoformat()
-        conf = _unify_confidence(product, r.get("confidence", "") or r.get("confidence_text", ""))
-        frp = float(r["frp"]) if r.get("frp") else None
-        rows.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [lon, lat]},
-            "properties": {
-                "id": r.get("track") or r.get("scan") or f"{product}_{dt}_{lat:.4f}_{lon:.4f}",
-                "source": product,
-                "acq_time": dt,
-                "confidence": conf,
-                "frp": frp,
-            },
-        })
+    text = content.decode("utf-8")
+    
+    # Check if response is an error message
+    if text.startswith("error") or "error" in text.lower()[:100]:
+        print(f"FIRMS API Error: {text[:200]}")
+        return []
+    
+    # Check if response is empty or just headers
+    lines = text.strip().split("\n")
+    if len(lines) <= 1:
+        print(f"FIRMS API returned no data (only headers or empty)")
+        return []
+    
+    reader = csv.DictReader(io.StringIO(text))
+    for i, r in enumerate(reader):
+        try:
+            # Skip rows with missing critical data
+            if not r.get("latitude") or not r.get("longitude"):
+                continue
+                
+            lat = float(r.get("latitude"))
+            lon = float(r.get("longitude"))
+            date = r.get("acq_date")
+            time_ = r.get("acq_time")
+            dt = f"{date}T{time_[:2]}:{time_[2:]}:00Z" if date and time_ else datetime.now(timezone.utc).isoformat()
+            conf = _unify_confidence(product, r.get("confidence", "") or r.get("confidence_text", ""))
+            frp = float(r["frp"]) if r.get("frp") else None
+            rows.append({
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                "properties": {
+                    "id": r.get("track") or r.get("scan") or f"{product}_{dt}_{lat:.4f}_{lon:.4f}",
+                    "source": product,
+                    "acq_time": dt,
+                    "confidence": conf,
+                    "frp": frp,
+                },
+            })
+        except (ValueError, TypeError, KeyError) as e:
+            # Skip malformed rows
+            print(f"Skipping malformed row {i}: {e}")
+            continue
+    
     return rows
 
 async def fetch_country(product: str, days: int = 1) -> dict:
@@ -97,8 +120,11 @@ async def fetch_bbox(product: str, days: int = 1) -> dict:
         return file_cached
 
     url = f"{FIRMS_AREA_BASE}/{api_key}/{product_key}/{encoded_wkt}/{days}"
+    print(f"Fetching FIRMS data from: {url[:100]}...")
     content = await fetch(url)
+    print(f"FIRMS response size: {len(content)} bytes")
     features = _parse_csv(product, content)
+    print(f"Parsed {len(features)} fire features")
     fc = {"type": "FeatureCollection", "features": features}
     file_cache_store("/app/data/firms", fk, fc)
     cache_set(ck, fc, ttl=settings.FIRMS_TTL)
