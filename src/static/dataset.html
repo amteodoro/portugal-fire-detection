@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Training Dataset Summary</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding: 2rem;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-radius: 12px;
+            border: 1px solid #334155;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            font-size: 1.1rem;
+        }
+
+        .refresh-btn {
+            margin-top: 1rem;
+            padding: 0.75rem 1.5rem;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+        }
+
+        .refresh-btn:disabled {
+            background: #475569;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .stat-card {
+            background: #1e293b;
+            padding: 1.5rem;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            transition: all 0.3s;
+        }
+
+        .stat-card:hover {
+            border-color: #3b82f6;
+            transform: translateY(-4px);
+            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.2);
+        }
+
+        .stat-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #3b82f6;
+            margin: 0.5rem 0;
+        }
+
+        .stat-label {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-detail {
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid #334155;
+            font-size: 0.9rem;
+            color: #cbd5e1;
+        }
+
+        .section {
+            background: #1e293b;
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            margin-bottom: 2rem;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .samples-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .sample-card {
+            background: #0f172a;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #334155;
+            transition: all 0.3s;
+        }
+
+        .sample-card:hover {
+            border-color: #3b82f6;
+            transform: scale(1.02);
+            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+        }
+
+        .sample-image {
+            width: 100%;
+            height: 250px;
+            object-fit: cover;
+            background: #0f172a;
+        }
+
+        .sample-info {
+            padding: 1rem;
+        }
+
+        .sample-date {
+            color: #3b82f6;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .sample-id {
+            color: #64748b;
+            font-size: 0.85rem;
+            font-family: monospace;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-ready {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+        }
+
+        .status-not-ready {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .splits-table {
+            width: 100%;
+            margin-top: 1rem;
+            border-collapse: collapse;
+        }
+
+        .splits-table th,
+        .splits-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #334155;
+        }
+
+        .splits-table th {
+            color: #94a3b8;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .splits-table tr:hover {
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 4rem;
+            font-size: 1.2rem;
+            color: #64748b;
+        }
+
+        .error {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            margin: 2rem 0;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
+            transition: width 0.3s;
+        }
+
+        .legend {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 8px;
+            border-left: 3px solid #3b82f6;
+        }
+
+        .legend-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #3b82f6;
+        }
+
+        .legend-text {
+            font-size: 0.9rem;
+            color: #cbd5e1;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛰️ Training Dataset Summary</h1>
+            <p class="subtitle">Sentinel-2 Imagery & FIRMS Fire Detection Data</p>
+            <button class="refresh-btn" onclick="refreshData()">🔄 Refresh Data</button>
+        </header>
+
+        <div id="loading" class="loading">
+            Loading dataset summary...
+        </div>
+
+        <div id="error" class="error" style="display: none;"></div>
+
+        <div id="content" style="display: none;">
+            <!-- Stats Overview -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📡</div>
+                    <div class="stat-value" id="sentinel2-count">0</div>
+                    <div class="stat-label">Sentinel-2 Scenes</div>
+                    <div class="stat-detail" id="sentinel2-detail"></div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">🔥</div>
+                    <div class="stat-value" id="fires-count">0</div>
+                    <div class="stat-label">Fire Detections</div>
+                    <div class="stat-detail" id="fires-detail"></div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-value" id="tiles-count">0</div>
+                    <div class="stat-label">Training Tiles</div>
+                    <div class="stat-detail" id="tiles-detail"></div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">✅</div>
+                    <div class="stat-value" id="status-badge"></div>
+                    <div class="stat-label">Training Status</div>
+                    <div class="stat-detail" id="status-detail"></div>
+                </div>
+            </div>
+
+            <!-- Training Splits -->
+            <div class="section" id="splits-section" style="display: none;">
+                <h2 class="section-title">📊 Training Data Splits</h2>
+                <table class="splits-table">
+                    <thead>
+                        <tr>
+                            <th>Split</th>
+                            <th>Fire Tiles</th>
+                            <th>No-Fire Tiles</th>
+                            <th>Total</th>
+                            <th>Fire Ratio</th>
+                        </tr>
+                    </thead>
+                    <tbody id="splits-tbody"></tbody>
+                </table>
+            </div>
+
+            <!-- False Color Samples -->
+            <div class="section">
+                <h2 class="section-title">🖼️ False Color Samples</h2>
+                <div class="legend">
+                    <div class="legend-title">False Color Composite (SWIR2-NIR-Red)</div>
+                    <div class="legend-text">
+                        <strong>Red Channel:</strong> SWIR2 (B12, 2190nm) - Active fires appear bright red/white<br>
+                        <strong>Green Channel:</strong> NIR (B08, 842nm) - Healthy vegetation appears green<br>
+                        <strong>Blue Channel:</strong> Red (B04, 665nm) - Water and bare soil visualization<br>
+                        <em>This band combination enhances fire detection and burn scar identification.</em>
+                    </div>
+                </div>
+                <div class="samples-grid" id="samples-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadSummary() {
+            try {
+                const response = await fetch('/api/dataset/summary');
+                if (!response.ok) throw new Error('Failed to load summary');
+                
+                const data = await response.json();
+                displaySummary(data);
+                
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+            } catch (error) {
+                console.error('Error loading summary:', error);
+                document.getElementById('loading').style.display = 'none';
+                const errorDiv = document.getElementById('error');
+                errorDiv.textContent = `Error: ${error.message}. Make sure data is available.`;
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        function displaySummary(data) {
+            // Sentinel-2 stats
+            document.getElementById('sentinel2-count').textContent = data.sentinel2.total_scenes;
+            document.getElementById('sentinel2-detail').innerHTML = 
+                `${data.sentinel2.unique_dates} unique dates<br>` +
+                `${data.sentinel2.date_range.start || 'N/A'} to ${data.sentinel2.date_range.end || 'N/A'}`;
+
+            // FIRMS stats
+            document.getElementById('fires-count').textContent = data.firms.total_fire_detections.toLocaleString();
+            const regionsText = data.firms.regions.map(r => 
+                `${r.name}: ${r.total_fires.toLocaleString()}`
+            ).join('<br>');
+            document.getElementById('fires-detail').innerHTML = regionsText || 'No regions';
+
+            // Training tiles
+            document.getElementById('tiles-count').textContent = data.processed.total_tiles.toLocaleString();
+            document.getElementById('tiles-detail').innerHTML = 
+                `${data.processed.fire_tiles} fire tiles (${(data.processed.fire_ratio * 100).toFixed(1)}%)<br>` +
+                `${data.processed.no_fire_tiles} no-fire tiles`;
+
+            // Status
+            const ready = data.status.ready_for_training;
+            const statusBadge = document.getElementById('status-badge');
+            statusBadge.className = 'status-badge ' + (ready ? 'status-ready' : 'status-not-ready');
+            statusBadge.textContent = ready ? 'Ready' : 'Not Ready';
+            
+            document.getElementById('status-detail').innerHTML = ready 
+                ? 'All data prepared for model training'
+                : 'Need to prepare training splits';
+
+            // Splits table
+            if (data.processed.total_tiles > 0) {
+                document.getElementById('splits-section').style.display = 'block';
+                const tbody = document.getElementById('splits-tbody');
+                tbody.innerHTML = '';
+
+                ['train', 'val', 'test'].forEach(split => {
+                    const counts = data.processed.splits[split];
+                    const total = counts.fire + counts.no_fire;
+                    const ratio = total > 0 ? (counts.fire / total * 100).toFixed(1) : '0.0';
+
+                    const row = `
+                        <tr>
+                            <td><strong>${split.charAt(0).toUpperCase() + split.slice(1)}</strong></td>
+                            <td>${counts.fire.toLocaleString()}</td>
+                            <td>${counts.no_fire.toLocaleString()}</td>
+                            <td>${total.toLocaleString()}</td>
+                            <td>
+                                ${ratio}%
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: ${ratio}%"></div>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                });
+            }
+
+            // Sample images
+            const samplesGrid = document.getElementById('samples-grid');
+            samplesGrid.innerHTML = '';
+
+            if (data.samples && data.samples.length > 0) {
+                data.samples.forEach(sample => {
+                    const card = document.createElement('div');
+                    card.className = 'sample-card';
+                    card.innerHTML = `
+                        <img src="${sample.image_url}" alt="Scene ${sample.scene_id}" class="sample-image">
+                        <div class="sample-info">
+                            <div class="sample-date">${sample.date}</div>
+                            <div class="sample-id">${sample.scene_id}</div>
+                        </div>
+                    `;
+                    samplesGrid.appendChild(card);
+                });
+            } else {
+                samplesGrid.innerHTML = '<p style="color: #64748b;">No sample images available. Generate them by running the summary script.</p>';
+            }
+        }
+
+        async function refreshData() {
+            const btn = document.querySelector('.refresh-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Refreshing...';
+
+            try {
+                const response = await fetch('/api/dataset/summary/refresh', { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to refresh');
+                
+                const data = await response.json();
+                displaySummary(data);
+                
+                btn.textContent = '✓ Refreshed!';
+                setTimeout(() => {
+                    btn.textContent = '🔄 Refresh Data';
+                    btn.disabled = false;
+                }, 2000);
+            } catch (error) {
+                console.error('Error refreshing:', error);
+                btn.textContent = '✗ Error';
+                setTimeout(() => {
+                    btn.textContent = '🔄 Refresh Data';
+                    btn.disabled = false;
+                }, 2000);
+            }
+        }
+
+        // Load on page load
+        loadSummary();
+    </script>
+</body>
+</html>

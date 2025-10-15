@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import RedirectResponse
 from src.utils.config import settings
-from src.api import firms, eumetsat, sentinel, images
+from src.api import firms, eumetsat, sentinel, images, dataset
 from src.utils.cleanup import schedule_cleanup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -19,6 +19,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.mount("/static", StaticFiles(directory="src/static"), name="static")
+    app.mount("/static/samples", StaticFiles(directory="data/samples"), name="samples")
 
     @app.get("/", include_in_schema=False)
     async def root():
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(eumetsat.router, prefix="/api/eumetsat", tags=["EUMETSAT"])
     app.include_router(sentinel.router, prefix="/api/sentinel2", tags=["Sentinel-2"])
     app.include_router(images.router, prefix="/api/images", tags=["Images"])
+    app.include_router(dataset.router, prefix="/api/dataset", tags=["Dataset"])
 
     if settings.SCHEDULER_ENABLED:
         scheduler = AsyncIOScheduler(timezone=settings.TIMEZONE)
