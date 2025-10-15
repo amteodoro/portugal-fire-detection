@@ -29,12 +29,18 @@
       </div>
       <div class="time-controls">
         <label>
-          Time Period (days):
+          Time Period:
           <select id="fireDays">
-            <option value="1" selected>Last 24h</option>
+            <option value="1" selected>Last 24 hours</option>
             <option value="2">Last 2 days</option>
             <option value="3">Last 3 days</option>
             <option value="7">Last 7 days</option>
+            <option value="14">Last 2 weeks</option>
+            <option value="30">Last 30 days</option>
+            <option value="60">Last 2 months</option>
+            <option value="90">Last 3 months</option>
+            <option value="180">Last 6 months</option>
+            <option value="365">Last year</option>
           </select>
         </label>
         <button id="refreshBtn" class="secondary">Refresh Fire Data</button>

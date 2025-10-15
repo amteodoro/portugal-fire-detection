@@ -107,7 +107,11 @@ async function loadFRP() {
       frpOverlay = null;
     }
     
-    if (meta && meta.path && meta.bbox) {
+    if (meta && meta.error) {
+      updateStatus(`Meteosat FRP: ${meta.error}`, 'warning');
+      updateBadge('frpStatus', 0, 'N/A');
+      console.warn('EUMETSAT FRP not available:', meta.error);
+    } else if (meta && meta.path && meta.bbox) {
       const bbox = meta.bbox; // lon_min, lat_min, lon_max, lat_max
       const sw = [bbox[1], bbox[0]];
       const ne = [bbox[3], bbox[2]];
@@ -123,7 +127,7 @@ async function loadFRP() {
       updateStatus('✓ Meteosat FRP overlay loaded', 'success');
       updateBadge('frpStatus', 0, 'OK');
     } else {
-      updateStatus('Meteosat FRP: No data available (check API credentials)', 'warning');
+      updateStatus('Meteosat FRP: Not configured (optional feature)', 'warning');
       updateBadge('frpStatus', 0, 'N/A');
     }
   } catch (error) {

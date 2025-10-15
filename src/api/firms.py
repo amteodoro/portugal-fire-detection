@@ -5,11 +5,11 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 router = APIRouter()
 
 @router.get("/viirs")
-async def viirs(days: int = Query(1, ge=1, le=7)):
+async def viirs(days: int = Query(1, ge=1, le=365)):
     return await fetch_country("VIIRS", days)
 
 @router.get("/modis")
-async def modis(days: int = Query(1, ge=1, le=7)):
+async def modis(days: int = Query(1, ge=1, le=365)):
     return await fetch_country("MODIS", days)
 
 def register_jobs(scheduler: AsyncIOScheduler):
