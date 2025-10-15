@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 
+
 class FirePoint(BaseModel):
     id: str
     source: str  # "VIIRS" | "MODIS"

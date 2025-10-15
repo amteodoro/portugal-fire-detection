@@ -57,14 +57,10 @@
             <option value="2">Last 2 days</option>
             <option value="3">Last 3 days</option>
             <option value="7">Last 7 days</option>
-            <option value="14">Last 2 weeks</option>
-            <option value="30">Last 30 days</option>
-            <option value="60">Last 2 months</option>
-            <option value="90">Last 3 months</option>
-            <option value="180">Last 6 months</option>
-            <option value="365">Last year</option>
+            <option value="10">Last 10 days</option>
           </select>
         </label>
+        <p class="info" style="margin: 5px 0; font-size: 0.85em;"><small>⚠️ FIRMS NRT data limited to 10 days max</small></p>
         <button id="refreshBtn" class="secondary">Refresh Fire Data</button>
         <button id="exportCsvBtn" class="success">Export to CSV</button>
       </div>
@@ -94,6 +90,7 @@
     </div>
   </div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/supercluster@8.0.1/dist/supercluster.min.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

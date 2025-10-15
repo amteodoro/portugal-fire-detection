@@ -4,6 +4,7 @@ import os
 
 router = APIRouter()
 
+
 @router.get("/{folder}/{filename}")
 async def get_image(folder: str, filename: str):
     path = f"/app/data/{folder}/{filename}"

@@ -9,6 +9,7 @@ import os
 
 DEFAULT_COLLECTION = "sentinel-2-l2a"  # Earth Search naming
 
+
 async def search_items(days: int = 7, cloud_pct: int = 20, limit: int = 12) -> dict:
     bbox = parse_bbox(settings.PORTUGAL_BBOX)
     cache_key = f"s2_search_{days}_{cloud_pct}_{limit}"
@@ -34,6 +35,7 @@ async def search_items(days: int = 7, cloud_pct: int = 20, limit: int = 12) -> d
     file_cache_store("/app/data/sentinel2", cache_key, data)
     return data
 
+
 async def fetch_thumbnail(item: dict) -> dict:
     assets = item.get("assets", {})
     thumb = assets.get("thumbnail") or assets.get("preview") or {}
@@ -41,7 +43,9 @@ async def fetch_thumbnail(item: dict) -> dict:
     if not href:
         return {}
     filename = os.path.basename(href).split("?")[0] or "s2_thumb.jpg"
-    path = save_image_bytes(await fetch(href), "sentinel2", filename=filename, optimize=False)
+    path = save_image_bytes(
+        await fetch(href), "sentinel2", filename=filename, optimize=False
+    )
     return {
         "id": item.get("id"),
         "source": "SENTINEL-2",

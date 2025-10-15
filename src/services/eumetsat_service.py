@@ -6,6 +6,7 @@ from src.utils.files import save_image_bytes
 from src.utils.caching import file_cache_load, file_cache_store
 import os
 
+
 def _wms_params(bbox: tuple[float, float, float, float]):
     lon_min, lat_min, lon_max, lat_max = bbox
     return {
@@ -22,6 +23,7 @@ def _wms_params(bbox: tuple[float, float, float, float]):
         "height": 1024,
     }
 
+
 async def fetch_frp_png() -> dict:
     bbox = parse_bbox(settings.PORTUGAL_BBOX)
     cache_key = "eumetsat_frp_png_latest"
@@ -31,21 +33,25 @@ async def fetch_frp_png() -> dict:
         file_size = os.path.getsize(existing.get("path", ""))
         if file_size > 1000:  # Valid image should be larger than 1KB
             return existing
-    
+
     if not settings.EUMETSAT_WMS_URL or not settings.EUMETSAT_FRP_LAYER:
         return {"error": "EUMETSAT WMS URL or layer not configured"}
-    
+
     try:
         headers = {}
         if settings.EUMETSAT_TOKEN:
             headers["Authorization"] = f"Bearer {settings.EUMETSAT_TOKEN}"
-        
-        img = await fetch(settings.EUMETSAT_WMS_URL, params=_wms_params(bbox), headers=headers)
-        
+
+        img = await fetch(
+            settings.EUMETSAT_WMS_URL, params=_wms_params(bbox), headers=headers
+        )
+
         # Validate response size
         if len(img) < 1000:
-            return {"error": "WMS returned invalid/small response - check credentials or layer name"}
-        
+            return {
+                "error": "WMS returned invalid/small response - check credentials or layer name"
+            }
+
         path = save_image_bytes(img, "eumetsat", filename=None, optimize=True)
         meta = {
             "id": os.path.basename(path),

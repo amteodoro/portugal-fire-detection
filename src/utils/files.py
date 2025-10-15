@@ -5,14 +5,19 @@ from io import BytesIO
 
 DATA_DIR = "/app/data"
 
+
 def ensure_dir(path: str):
     os.makedirs(path, exist_ok=True)
+
 
 def timestamp_name(prefix: str, ext: str = "png") -> str:
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     return f"{prefix}_{ts}.{ext}"
 
-def save_image_bytes(img_bytes: bytes, subdir: str, filename: str | None = None, optimize: bool = True) -> str:
+
+def save_image_bytes(
+    img_bytes: bytes, subdir: str, filename: str | None = None, optimize: bool = True
+) -> str:
     base = os.path.join(DATA_DIR, subdir)
     ensure_dir(base)
     name = filename or timestamp_name(subdir)

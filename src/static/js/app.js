@@ -55,6 +55,10 @@ let frpOverlay = null;
 let heatmapLayer = null;
 let allFireData = []; // Store all fire data for heatmap and CSV
 
+// Supercluster for fire point clustering
+let fireClusterIndex = null;
+let clusterMarkers = [];
+
 // Status tracking
 function updateStatus(message, type = 'info') {
   const statusBox = document.querySelector('#statusMessages');
@@ -195,78 +199,162 @@ async function loadFRP() {
   }
 }
 
-// Update heatmap layer
+// Update heatmap layer with Supercluster-based clustering
 function updateHeatmap() {
   if (!allFireData || allFireData.length === 0) {
     updateBadge('heatmapCount', 0);
     if (heatmapLayer && map.hasLayer(heatmapLayer)) {
       map.removeLayer(heatmapLayer);
     }
+    fireClusterIndex = null;
     return;
   }
   
-  // Convert fire data to heatmap format [lat, lng, intensity]
-  const heatData = allFireData.map(f => {
-    const [lon, lat] = f.geometry.coordinates;
-    const intensity = (f.properties.confidence || 50) / 100; // Normalize confidence to 0-1
-    return [lat, lon, intensity];
+  // Initialize Supercluster with fire data
+  fireClusterIndex = new Supercluster({
+    radius: 60,  // Cluster radius in pixels
+    maxZoom: 16, // Max zoom to cluster points on
+    minZoom: 0,
+    minPoints: 2 // Minimum points to form a cluster
   });
   
-  // Remove old heatmap
-  if (heatmapLayer && map.hasLayer(heatmapLayer)) {
-    map.removeLayer(heatmapLayer);
-  }
+  // Convert fire features to GeoJSON points for Supercluster
+  const points = allFireData.map(f => ({
+    type: 'Feature',
+    geometry: f.geometry,
+    properties: f.properties
+  }));
   
-  // Create new heatmap using canvas overlay
-  heatmapLayer = L.layerGroup();
-  
-  // Simple circle-based heatmap (fallback if Leaflet.heat not available)
-  heatData.forEach(([lat, lon, intensity]) => {
-    L.circle([lat, lon], {
-      radius: 5000,
-      fillColor: intensity > 0.7 ? '#ff0000' : intensity > 0.4 ? '#ff6600' : '#ffaa00',
-      fillOpacity: 0.3,
-      stroke: false
-    }).addTo(heatmapLayer);
-  });
+  fireClusterIndex.load(points);
   
   updateBadge('heatmapCount', allFireData.length);
   
+  // Initial render of clusters
   if (document.querySelector('#heatmapToggle').checked) {
-    heatmapLayer.addTo(map);
+    renderClusters();
   }
 }
 
-// CSV export function
+// Render clustered fire points on the map
+function renderClusters() {
+  if (!fireClusterIndex) return;
+  
+  // Remove old heatmap/cluster layer
+  if (heatmapLayer && map.hasLayer(heatmapLayer)) {
+    map.removeLayer(heatmapLayer);
+  }
+  heatmapLayer = L.layerGroup();
+  
+  const bounds = map.getBounds();
+  const bbox = [
+    bounds.getWest(),
+    bounds.getSouth(),
+    bounds.getEast(),
+    bounds.getNorth()
+  ];
+  const zoom = map.getZoom();
+  
+  // Get clusters for current map view
+  const clusters = fireClusterIndex.getClusters(bbox, Math.floor(zoom));
+  
+  clusters.forEach(cluster => {
+    const [lon, lat] = cluster.geometry.coordinates;
+    const props = cluster.properties;
+    
+    if (cluster.properties.cluster) {
+      // This is a cluster
+      const count = props.point_count;
+      const size = count < 10 ? 30 : count < 50 ? 40 : count < 100 ? 50 : 60;
+      
+      const marker = L.marker([lat, lon], {
+        icon: L.divIcon({
+          html: `<div style="background-color: rgba(255, 87, 34, 0.8); width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 3px solid rgba(255, 255, 255, 0.8);">${count}</div>`,
+          className: 'fire-cluster-marker',
+          iconSize: [size, size]
+        })
+      });
+      
+      // Zoom in on cluster click
+      marker.on('click', () => {
+        const expansionZoom = fireClusterIndex.getClusterExpansionZoom(cluster.id);
+        map.setView([lat, lon], expansionZoom);
+      });
+      
+      marker.addTo(heatmapLayer);
+    } else {
+      // Individual fire point
+      const conf = props.confidence ?? 50;
+      const frp = props.frp ?? 'N/A';
+      const color = conf >= 80 ? '#d32f2f' : conf >= 50 ? '#ff6f00' : '#ffa000';
+      
+      const marker = L.circleMarker([lat, lon], {
+        radius: 8,
+        color: color,
+        fillColor: color,
+        fillOpacity: 0.7,
+        weight: 2
+      });
+      
+      marker.bindPopup(`
+        <strong>${props.source || 'VIIRS'}</strong><br/>
+        Time: ${props.acq_time}<br/>
+        Confidence: ${conf.toFixed(0)}%<br/>
+        FRP: ${frp} MW
+      `);
+      
+      marker.addTo(heatmapLayer);
+    }
+  });
+  
+  heatmapLayer.addTo(map);
+}
+
+// CSV export function with enhanced metadata
 function exportToCSV() {
   if (!allFireData || allFireData.length === 0) {
     updateStatus('No fire data to export', 'warning');
     return;
   }
   
-  // Create CSV content
-  const headers = ['Date/Time', 'Latitude', 'Longitude', 'Confidence (%)', 'FRP (MW)', 'Source'];
+  const region = REGIONS[currentRegion];
+  const days = parseInt(document.querySelector('#fireDays').value);
+  const timestamp = new Date().toISOString();
+  
+  // Create CSV content with metadata header
+  const metadata = [
+    `# Fire Detection Data Export`,
+    `# Generated: ${timestamp}`,
+    `# Region: ${region.name}`,
+    `# Time Period: ${days} day(s)`,
+    `# Total Detections: ${allFireData.length}`,
+    `# Data Sources: NASA FIRMS (VIIRS/MODIS NRT)`,
+    `#`,
+  ].join('\n');
+  
+  const headers = ['ID', 'Date/Time', 'Latitude', 'Longitude', 'Confidence (%)', 'FRP (MW)', 'Source', 'Region'];
   const rows = allFireData.map(f => {
     const [lon, lat] = f.geometry.coordinates;
     const props = f.properties;
     return [
-      props.acq_time || 'N/A',
+      `"${props.id || 'N/A'}"`,
+      `"${props.acq_time || 'N/A'}"`,
       lat.toFixed(6),
       lon.toFixed(6),
       (props.confidence || 0).toFixed(1),
-      (props.frp || 'N/A'),
-      props.source || 'VIIRS'
+      props.frp !== null && props.frp !== undefined ? props.frp.toFixed(2) : 'N/A',
+      `"${props.source || 'VIIRS'}"`,
+      `"${region.name}"`
     ].join(',');
   });
   
-  const csv = [headers.join(','), ...rows].join('\n');
+  const csv = metadata + '\n' + [headers.join(','), ...rows].join('\n');
   
   // Download CSV
-  const blob = new Blob([csv], { type: 'text/csv' });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `portugal-fires-${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `fire-detections-${region.name.toLowerCase().replace(/\s+/g, '-')}-${days}d-${new Date().toISOString().split('T')[0]}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -295,6 +383,7 @@ async function switchRegion(regionKey) {
     heatmapLayer = null;
   }
   allFireData = [];
+  fireClusterIndex = null;
   
   // Reset badges
   updateBadge('viirsCount', 0, '...');
@@ -394,8 +483,8 @@ document.querySelector('#regionSelect').addEventListener('change', (e) => {
 // Heatmap toggle handler
 document.querySelector('#heatmapToggle').addEventListener('change', (e) => {
   if (e.target.checked) {
-    if (heatmapLayer) {
-      heatmapLayer.addTo(map);
+    if (fireClusterIndex) {
+      renderClusters();
     } else {
       updateHeatmap();
     }
@@ -403,6 +492,19 @@ document.querySelector('#heatmapToggle').addEventListener('change', (e) => {
     if (heatmapLayer) {
       map.removeLayer(heatmapLayer);
     }
+  }
+});
+
+// Map move/zoom handlers to update clusters dynamically
+map.on('moveend', () => {
+  if (fireClusterIndex && document.querySelector('#heatmapToggle').checked) {
+    renderClusters();
+  }
+});
+
+map.on('zoomend', () => {
+  if (fireClusterIndex && document.querySelector('#heatmapToggle').checked) {
+    renderClusters();
   }
 });
 

@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 
+
 class ImageItem(BaseModel):
     id: str
     source: str  # "EUMETSAT_FRP" | "SENTINEL-2"
