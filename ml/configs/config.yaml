@@ -1,0 +1,108 @@
+# ML Fire Detection Configuration
+
+# Data paths
+data:
+  raw_dir: "data/ml/sentinel2"
+  processed_dir: "ml/data/processed"
+  tiles_dir: "ml/data/tiles"
+  labels_dir: "ml/data/labels"
+  firms_cache: "data/firms"
+  
+# Region of interest (Portugal)
+region:
+  name: "Portugal"
+  bbox: [-9.5, 36.8, -6.0, 42.3]  # [lon_min, lat_min, lon_max, lat_max]
+  
+# Time range for training data
+time_range:
+  start_date: "2023-01-01"
+  end_date: "2024-12-31"
+  
+# Sentinel-2 settings
+sentinel2:
+  collection: "sentinel-2-l2a"
+  bands: ["red", "nir", "swir16", "swir22"]  # Red (B04), NIR (B08), SWIR1 (B11), SWIR2 (B12)
+  band_names: ["red", "nir", "swir1", "swir2"]
+  band_save_names: ["B04", "B08", "B11", "B12"]  # Saved as Bxx for compatibility
+  max_cloud_cover: 20
+  resolution: 20  # meters (SWIR bands)
+  
+# FIRMS matching settings
+firms:
+  temporal_window_days: 3  # Match scenes within ±3 days of fire
+  spatial_buffer_km: 5  # Buffer around fire location
+  min_confidence: 50  # Minimum fire confidence threshold
+  
+# Tile extraction
+tiles:
+  size: 256  # pixels
+  stride: 128  # overlap for sliding window
+  fire_tile_buffer: 2  # km around fire center for positive samples
+  negative_sample_ratio: 3  # negative:positive sample ratio
+  
+# Data augmentation
+augmentation:
+  enabled: true
+  rotation: true
+  flip_horizontal: true
+  flip_vertical: true
+  brightness: 0.2
+  contrast: 0.2
+  
+# Dataset splits
+splits:
+  train: 0.7
+  val: 0.15
+  test: 0.15
+  random_seed: 42
+  
+# Model architecture
+model:
+  type: "cnn_classifier"  # Options: cnn_classifier, unet_segmentation, temporal
+  backbone: "resnet50"
+  pretrained: true
+  num_classes: 2  # fire vs no-fire (binary)
+  input_channels: 4  # 4 Sentinel-2 bands
+  dropout: 0.3
+  
+# Training parameters
+training:
+  batch_size: 32
+  epochs: 100
+  learning_rate: 0.001
+  optimizer: "adamw"
+  scheduler: "cosine"
+  early_stopping:
+    patience: 10
+    min_delta: 0.001
+  
+# Loss function
+loss:
+  type: "focal"  # Options: focal, cross_entropy, dice
+  alpha: 0.25  # Focal loss alpha
+  gamma: 2.0   # Focal loss gamma
+  
+# Validation metrics
+metrics:
+  - "accuracy"
+  - "precision"
+  - "recall"
+  - "f1"
+  - "roc_auc"
+  
+# Inference settings
+inference:
+  confidence_threshold: 0.7
+  nms_threshold: 0.5  # Non-max suppression
+  batch_size: 16
+  
+# Logging and checkpoints
+logging:
+  experiment_name: "fire_detection"
+  checkpoint_dir: "ml/training/checkpoints"
+  log_dir: "ml/training/logs"
+  save_top_k: 3
+  wandb:
+    enabled: false
+    project: "portugal-fire-detection"
+    entity: null
