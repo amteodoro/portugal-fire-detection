@@ -1,3 +1,11 @@
+// Region configurations
+const REGIONS = {
+  mainland: { center: [39.5, -8.0], zoom: 7, name: 'Mainland Portugal' },
+  madeira: { center: [32.65, -16.9], zoom: 10, name: 'Madeira' },
+  azores: { center: [38.7, -27.2], zoom: 8, name: 'Açores' },
+  all: { center: [39.5, -15.0], zoom: 6, name: 'All Regions' }
+};
+
 // Initialize map centered on Portugal
 const map = L.map('map').setView([39.5, -8.0], 7);
 const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -9,6 +17,8 @@ const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 let viirsLayer = L.layerGroup().addTo(map);
 let modisLayer = L.layerGroup();
 let frpOverlay = null;
+let heatmapLayer = null;
+let allFireData = []; // Store all fire data for heatmap and CSV
 
 // Status tracking
 function updateStatus(message, type = 'info') {
@@ -76,6 +86,13 @@ async function loadFIRMS(product, layer, days = 1) {
         
         marker.addTo(layer);
       });
+      
+      // Store data for heatmap and CSV export
+      if (product === 'viirs') {
+        allFireData = data.features;
+        updateHeatmap();
+      }
+      
       updateStatus(`✓ ${productName}: ${data.features.length} fire detection(s)`, 'success');
       updateBadge(badgeId, data.features.length);
     } else {
@@ -137,6 +154,95 @@ async function loadFRP() {
   }
 }
 
+// Update heatmap layer
+function updateHeatmap() {
+  if (!allFireData || allFireData.length === 0) {
+    updateBadge('heatmapCount', 0);
+    if (heatmapLayer && map.hasLayer(heatmapLayer)) {
+      map.removeLayer(heatmapLayer);
+    }
+    return;
+  }
+  
+  // Convert fire data to heatmap format [lat, lng, intensity]
+  const heatData = allFireData.map(f => {
+    const [lon, lat] = f.geometry.coordinates;
+    const intensity = (f.properties.confidence || 50) / 100; // Normalize confidence to 0-1
+    return [lat, lon, intensity];
+  });
+  
+  // Remove old heatmap
+  if (heatmapLayer && map.hasLayer(heatmapLayer)) {
+    map.removeLayer(heatmapLayer);
+  }
+  
+  // Create new heatmap using canvas overlay
+  heatmapLayer = L.layerGroup();
+  
+  // Simple circle-based heatmap (fallback if Leaflet.heat not available)
+  heatData.forEach(([lat, lon, intensity]) => {
+    L.circle([lat, lon], {
+      radius: 5000,
+      fillColor: intensity > 0.7 ? '#ff0000' : intensity > 0.4 ? '#ff6600' : '#ffaa00',
+      fillOpacity: 0.3,
+      stroke: false
+    }).addTo(heatmapLayer);
+  });
+  
+  updateBadge('heatmapCount', allFireData.length);
+  
+  if (document.querySelector('#heatmapToggle').checked) {
+    heatmapLayer.addTo(map);
+  }
+}
+
+// CSV export function
+function exportToCSV() {
+  if (!allFireData || allFireData.length === 0) {
+    updateStatus('No fire data to export', 'warning');
+    return;
+  }
+  
+  // Create CSV content
+  const headers = ['Date/Time', 'Latitude', 'Longitude', 'Confidence (%)', 'FRP (MW)', 'Source'];
+  const rows = allFireData.map(f => {
+    const [lon, lat] = f.geometry.coordinates;
+    const props = f.properties;
+    return [
+      props.acq_time || 'N/A',
+      lat.toFixed(6),
+      lon.toFixed(6),
+      (props.confidence || 0).toFixed(1),
+      (props.frp || 'N/A'),
+      props.source || 'VIIRS'
+    ].join(',');
+  });
+  
+  const csv = [headers.join(','), ...rows].join('\n');
+  
+  // Download CSV
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `portugal-fires-${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  
+  updateStatus(`✓ Exported ${allFireData.length} fire detections to CSV`, 'success');
+}
+
+// Region switching function
+function switchRegion(regionKey) {
+  const region = REGIONS[regionKey];
+  if (!region) return;
+  
+  map.setView(region.center, region.zoom);
+  updateStatus(`Switched to: ${region.name}`);
+}
+
 // Helper function to refresh fire data
 function refreshFireData() {
   const days = parseInt(document.querySelector('#fireDays').value);
@@ -193,6 +299,31 @@ document.querySelector('#refreshBtn').addEventListener('click', () => {
   refreshFireData();
   if (document.querySelector('#frpToggle').checked || frpOverlay) {
     loadFRP();
+  }
+});
+
+// CSV export button handler
+document.querySelector('#exportCsvBtn').addEventListener('click', () => {
+  exportToCSV();
+});
+
+// Region selector handler
+document.querySelector('#regionSelect').addEventListener('change', (e) => {
+  switchRegion(e.target.value);
+});
+
+// Heatmap toggle handler
+document.querySelector('#heatmapToggle').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    if (heatmapLayer) {
+      heatmapLayer.addTo(map);
+    } else {
+      updateHeatmap();
+    }
+  } else {
+    if (heatmapLayer) {
+      map.removeLayer(heatmapLayer);
+    }
   }
 });
 

@@ -12,6 +12,18 @@
     <div id="map"></div>
     <div id="sidebar">
       <h2>Portugal Fire Detection</h2>
+      <div class="region-selector">
+        <label>
+          <strong>Region:</strong>
+          <select id="regionSelect">
+            <option value="mainland" selected>Mainland Portugal</option>
+            <option value="madeira">Madeira</option>
+            <option value="azores">Açores</option>
+            <option value="all">All Regions</option>
+          </select>
+        </label>
+      </div>
+      <hr/>
       <h3>Active Fire Layers</h3>
       <div class="layer-controls">
         <label>
@@ -25,6 +37,10 @@
         <label>
           <input type="checkbox" id="frpToggle"/> 
           Meteosat FRP <span id="frpStatus" class="badge">-</span>
+        </label>
+        <label>
+          <input type="checkbox" id="heatmapToggle"/> 
+          Fire Heatmap <span id="heatmapCount" class="badge">-</span>
         </label>
       </div>
       <div class="time-controls">
@@ -44,6 +60,7 @@
           </select>
         </label>
         <button id="refreshBtn" class="secondary">Refresh Fire Data</button>
+        <button id="exportCsvBtn" class="success">Export to CSV</button>
       </div>
       <hr/>
       <h3>Sentinel-2 Search</h3>
