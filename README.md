@@ -4,10 +4,23 @@ Multi-source satellite fire detection viewer for Portugal using VIIRS/MODIS NRT 
 
 ## Features
 
+### Fire Detection & Monitoring
 - **VIIRS/MODIS Active Fire Detection** via NASA FIRMS API (country-scoped to Portugal)
-- **Meteosat FRP Continuous Monitoring** via EUMETSAT WMS overlay
+- **Historical Fire Data** - View fire detections up to 365 days back
+- **Meteosat FRP Continuous Monitoring** via EUMETSAT WMS overlay (optional)
 - **Sentinel-2 Post-Fire Damage Mapping** via STAC catalog search
-- **Interactive Leaflet Map** centered on Portugal
+- **Fire Heatmap Visualization** - See fire intensity patterns
+
+### Geographic Coverage
+- **Mainland Portugal** - Full coverage
+- **Madeira** - Island region support
+- **Açores** - Island region support
+- **Multi-Region View** - See all regions at once
+
+### Data Management
+- **CSV Export** - Download fire detection data for analysis
+- **Interactive Leaflet Map** with layer controls
+- **Real-time Status Monitoring** - See what's loading and any errors
 - **Aggressive Caching** to minimize API usage during testing
 - **Docker-Based Environment** with uv package management
 
@@ -56,10 +69,38 @@ Multi-source satellite fire detection viewer for Portugal using VIIRS/MODIS NRT 
 
 ### Web Interface
 
+#### Region Selection
+- Use the **Region** dropdown to switch between:
+  - Mainland Portugal
+  - Madeira
+  - Açores
+  - All Regions view
+
+#### Fire Detection Layers
 - **VIIRS Layer**: Toggle to show/hide VIIRS fire detections (checked by default)
 - **MODIS Layer**: Toggle to show/hide MODIS fire detections
-- **Meteosat FRP Layer**: Toggle to show/hide FRP overlay image
-- **Sentinel-2 Search**: Configure days and cloud cover percentage, then click "Search" to fetch thumbnails
+- **Fire Heatmap**: Toggle to show fire intensity heatmap
+- **Meteosat FRP Layer**: Toggle to show/hide FRP overlay image (if configured)
+
+#### Time Period Selection
+- **Time Period Dropdown**: View fires from:
+  - Last 24 hours
+  - Last 2-7 days
+  - Last 2-4 weeks
+  - Last 1-6 months
+  - Last year (365 days)
+- **Refresh Button**: Manually update fire data
+
+#### Data Export
+- **Export to CSV**: Download all fire detection data with:
+  - Date/Time
+  - Latitude/Longitude
+  - Confidence percentage
+  - Fire Radiative Power (FRP)
+  - Data source
+
+#### Post-Fire Assessment
+- **Sentinel-2 Search**: Configure days and cloud cover percentage, then click "Search" to fetch satellite imagery thumbnails
 
 ### API Endpoints
 
@@ -169,9 +210,12 @@ Files older than 14 days are automatically cleaned up when the scheduler is enab
 ## Troubleshooting
 
 ### No fire detections showing
+- **This is often good news!** - It means Portugal has no active fires
 - Verify your FIRMS API key is correct in `.env`
-- Check that Portugal has active fires (VIIRS/MODIS data availability)
-- Try increasing the `days` parameter
+- Try increasing the time period (use dropdown to select "Last 30 days" or "Last 3 months")
+- Check the **Status** box at the bottom for detailed messages
+- Open browser console (F12) to see detailed logs
+- **Note**: FIRMS NRT data typically covers the last 7-10 days reliably. Historical data beyond that may be limited.
 
 ### EUMETSAT FRP not loading
 - The public WMS endpoint may have availability issues
