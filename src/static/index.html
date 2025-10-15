@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Portugal Fire Detection</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="/static/css/styles.css"/>
+</head>
+<body>
+  <div id="app">
+    <div id="map"></div>
+    <div id="sidebar">
+      <h2>Portugal Fire Detection</h2>
+      <h3>Active Fire Layers</h3>
+      <label><input type="checkbox" id="viirsToggle" checked/> VIIRS</label><br/>
+      <label><input type="checkbox" id="modisToggle"/> MODIS</label><br/>
+      <label><input type="checkbox" id="frpToggle"/> Meteosat FRP</label>
+      <hr/>
+      <h3>Sentinel-2 Search</h3>
+      <div class="search-controls">
+        <label>
+          Days: 
+          <input type="number" id="s2Days" min="1" max="30" value="7" style="width: 60px;"/>
+        </label><br/>
+        <label>
+          Cloud%: 
+          <input type="number" id="s2Cloud" min="0" max="100" value="20" style="width: 60px;"/>
+        </label><br/>
+        <button id="s2SearchBtn">Search</button>
+      </div>
+      <div id="s2Results"></div>
+      <hr/>
+      <p class="info">
+        <small>Data sources: NASA FIRMS (VIIRS/MODIS), EUMETSAT (Meteosat FRP), Copernicus (Sentinel-2)</small>
+      </p>
+    </div>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
