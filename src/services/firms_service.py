@@ -1,6 +1,5 @@
 import csv
 import io
-from urllib.parse import quote
 from datetime import datetime, timezone
 from src.utils.config import settings
 from src.utils.http import fetch
@@ -84,19 +83,6 @@ async def fetch_country(product: str, days: int = 1) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
-def _bbox_to_wkt(bbox_str: str) -> str:
-    lon_min, lat_min, lon_max, lat_max = parse_bbox(bbox_str)
-    # Create a polygon WKT (lon lat order) closed ring
-    coords = [
-        (lon_min, lat_min),
-        (lon_max, lat_min),
-        (lon_max, lat_max),
-        (lon_min, lat_max),
-        (lon_min, lat_min),
-    ]
-    wkt = "POLYGON((" + ", ".join([f"{x} {y}" for x, y in coords]) + "))"
-    return wkt
-
 async def fetch_bbox(product: str, days: int = 1) -> dict:
     """Fetch FIRMS data for the configured bbox (from .env)."""
     product_key = PRODUCTS[product]
@@ -104,9 +90,10 @@ async def fetch_bbox(product: str, days: int = 1) -> dict:
     if not api_key:
         return {"type": "FeatureCollection", "features": []}
 
+    # FIRMS area API expects: [west,south,east,north] = [lon_min,lat_min,lon_max,lat_max]
     bbox_str = settings.PORTUGAL_BBOX
-    wkt = _bbox_to_wkt(bbox_str)
-    encoded_wkt = quote(wkt, safe="")
+    lon_min, lat_min, lon_max, lat_max = parse_bbox(bbox_str)
+    area_spec = f"{lon_min},{lat_min},{lon_max},{lat_max}"
 
     # Cache keys include bbox to avoid stale results
     ck = f"firms_{product}_{bbox_str}_{days}"
@@ -119,10 +106,11 @@ async def fetch_bbox(product: str, days: int = 1) -> dict:
         cache_set(ck, file_cached, ttl=settings.FIRMS_TTL)
         return file_cached
 
-    url = f"{FIRMS_AREA_BASE}/{api_key}/{product_key}/{encoded_wkt}/{days}"
+    url = f"{FIRMS_AREA_BASE}/{api_key}/{product_key}/{area_spec}/{days}"
     print(f"Fetching FIRMS data from: {url[:100]}...")
     content = await fetch(url)
     print(f"FIRMS response size: {len(content)} bytes")
+    print(f"FIRMS response first 500 chars: {content[:500]}")
     features = _parse_csv(product, content)
     print(f"Parsed {len(features)} fire features")
     fc = {"type": "FeatureCollection", "features": features}
