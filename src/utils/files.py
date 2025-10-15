@@ -18,10 +18,15 @@ def save_image_bytes(img_bytes: bytes, subdir: str, filename: str | None = None,
     name = filename or timestamp_name(subdir)
     path = os.path.join(base, name)
     if optimize:
-        im = Image.open(BytesIO(img_bytes))
-        if im.mode in ("RGBA", "P"):
-            im = im.convert("RGB")
-        im.save(path, optimize=True, quality=85)
+        try:
+            im = Image.open(BytesIO(img_bytes))
+            if im.mode in ("RGBA", "P"):
+                im = im.convert("RGB")
+            im.save(path, optimize=True, quality=85)
+        except Exception:
+            # If image optimization fails, save raw bytes
+            with open(path, "wb") as f:
+                f.write(img_bytes)
     else:
         with open(path, "wb") as f:
             f.write(img_bytes)

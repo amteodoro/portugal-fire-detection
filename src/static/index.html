@@ -13,9 +13,32 @@
     <div id="sidebar">
       <h2>Portugal Fire Detection</h2>
       <h3>Active Fire Layers</h3>
-      <label><input type="checkbox" id="viirsToggle" checked/> VIIRS</label><br/>
-      <label><input type="checkbox" id="modisToggle"/> MODIS</label><br/>
-      <label><input type="checkbox" id="frpToggle"/> Meteosat FRP</label>
+      <div class="layer-controls">
+        <label>
+          <input type="checkbox" id="viirsToggle" checked/> 
+          VIIRS <span id="viirsCount" class="badge">-</span>
+        </label>
+        <label>
+          <input type="checkbox" id="modisToggle"/> 
+          MODIS <span id="modisCount" class="badge">-</span>
+        </label>
+        <label>
+          <input type="checkbox" id="frpToggle"/> 
+          Meteosat FRP <span id="frpStatus" class="badge">-</span>
+        </label>
+      </div>
+      <div class="time-controls">
+        <label>
+          Time Period (days):
+          <select id="fireDays">
+            <option value="1" selected>Last 24h</option>
+            <option value="2">Last 2 days</option>
+            <option value="3">Last 3 days</option>
+            <option value="7">Last 7 days</option>
+          </select>
+        </label>
+        <button id="refreshBtn" class="secondary">Refresh Fire Data</button>
+      </div>
       <hr/>
       <h3>Sentinel-2 Search</h3>
       <div class="search-controls">
@@ -30,6 +53,11 @@
         <button id="s2SearchBtn">Search</button>
       </div>
       <div id="s2Results"></div>
+      <hr/>
+      <div id="statusBox" class="status-box">
+        <h4>Status</h4>
+        <div id="statusMessages">Ready to load data...</div>
+      </div>
       <hr/>
       <p class="info">
         <small>Data sources: NASA FIRMS (VIIRS/MODIS), EUMETSAT (Meteosat FRP), Copernicus (Sentinel-2)</small>

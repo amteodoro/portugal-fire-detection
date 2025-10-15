@@ -10,10 +10,45 @@ let viirsLayer = L.layerGroup().addTo(map);
 let modisLayer = L.layerGroup();
 let frpOverlay = null;
 
+// Status tracking
+function updateStatus(message, type = 'info') {
+  const statusBox = document.querySelector('#statusMessages');
+  const timestamp = new Date().toLocaleTimeString();
+  const className = type === 'success' ? 'success' : type === 'warning' ? 'warning' : type === 'error' ? 'error' : '';
+  statusBox.innerHTML = `<div class="${className}">[${timestamp}] ${message}</div>` + statusBox.innerHTML;
+  // Keep only last 5 messages
+  const messages = statusBox.querySelectorAll('div');
+  if (messages.length > 5) {
+    messages[messages.length - 1].remove();
+  }
+  console.log(`[${type.toUpperCase()}] ${message}`);
+}
+
+function updateBadge(elementId, count, status = '') {
+  const badge = document.getElementById(elementId);
+  if (status) {
+    badge.textContent = status;
+    badge.className = 'badge';
+  } else {
+    badge.textContent = count;
+    badge.className = count > 0 ? 'badge active' : 'badge empty';
+  }
+}
+
 // Load FIRMS fire data (VIIRS or MODIS)
-async function loadFIRMS(product, layer) {
+async function loadFIRMS(product, layer, days = 1) {
+  const productName = product.toUpperCase();
+  const badgeId = product === 'viirs' ? 'viirsCount' : 'modisCount';
+  
   try {
-    const res = await fetch(`/api/firms/${product}`);
+    updateStatus(`Loading ${productName} data (${days} days)...`);
+    updateBadge(badgeId, 0, '...');
+    
+    const res = await fetch(`/api/firms/${product}?days=${days}`);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    
     const data = await res.json();
     layer.clearLayers();
     
@@ -33,27 +68,38 @@ async function loadFIRMS(product, layer) {
         });
         
         marker.bindPopup(`
-          <strong>${product.toUpperCase()}</strong><br/>
+          <strong>${productName}</strong><br/>
           Time: ${f.properties.acq_time}<br/>
           Confidence: ${conf.toFixed(0)}%<br/>
-          FRP: ${frp}
+          FRP: ${frp} MW
         `);
         
         marker.addTo(layer);
       });
-      console.log(`Loaded ${data.features.length} ${product} fire points`);
+      updateStatus(`✓ ${productName}: ${data.features.length} fire detection(s)`, 'success');
+      updateBadge(badgeId, data.features.length);
     } else {
-      console.log(`No ${product} fires detected`);
+      updateStatus(`${productName}: No fires detected (good news!)`, 'warning');
+      updateBadge(badgeId, 0);
     }
   } catch (error) {
-    console.error(`Error loading ${product}:`, error);
+    console.error(`Error loading ${productName}:`, error);
+    updateStatus(`✗ Error loading ${productName}: ${error.message}`, 'error');
+    updateBadge(badgeId, 0, 'ERR');
   }
 }
 
 // Load Meteosat FRP overlay
 async function loadFRP() {
   try {
+    updateStatus('Loading Meteosat FRP overlay...');
+    updateBadge('frpStatus', 0, '...');
+    
     const res = await fetch('/api/eumetsat/frp/latest');
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    
     const meta = await res.json();
     
     if (frpOverlay) {
@@ -74,12 +120,29 @@ async function loadFRP() {
       if (document.querySelector('#frpToggle').checked) {
         frpOverlay.addTo(map);
       }
-      console.log('Loaded Meteosat FRP overlay');
+      updateStatus('✓ Meteosat FRP overlay loaded', 'success');
+      updateBadge('frpStatus', 0, 'OK');
     } else {
-      console.log('No FRP overlay available');
+      updateStatus('Meteosat FRP: No data available (check API credentials)', 'warning');
+      updateBadge('frpStatus', 0, 'N/A');
     }
   } catch (error) {
     console.error('Error loading FRP:', error);
+    updateStatus(`✗ Error loading Meteosat FRP: ${error.message}`, 'error');
+    updateBadge('frpStatus', 0, 'ERR');
+  }
+}
+
+// Helper function to refresh fire data
+function refreshFireData() {
+  const days = parseInt(document.querySelector('#fireDays').value);
+  updateStatus(`Refreshing fire data (${days} days)...`);
+  
+  if (document.querySelector('#viirsToggle').checked) {
+    loadFIRMS('viirs', viirsLayer, days);
+  }
+  if (document.querySelector('#modisToggle').checked && map.hasLayer(modisLayer)) {
+    loadFIRMS('modis', modisLayer, days);
   }
 }
 
@@ -95,7 +158,8 @@ document.querySelector('#viirsToggle').addEventListener('change', (e) => {
 document.querySelector('#modisToggle').addEventListener('change', (e) => {
   if (e.target.checked) {
     if (!map.hasLayer(modisLayer)) {
-      loadFIRMS('modis', modisLayer);
+      const days = parseInt(document.querySelector('#fireDays').value);
+      loadFIRMS('modis', modisLayer, days);
     }
     modisLayer.addTo(map);
   } else {
@@ -111,6 +175,19 @@ document.querySelector('#frpToggle').addEventListener('change', (e) => {
       map.removeLayer(frpOverlay);
     }
   } else if (e.target.checked) {
+    loadFRP();
+  }
+});
+
+// Time period change handler
+document.querySelector('#fireDays').addEventListener('change', () => {
+  refreshFireData();
+});
+
+// Refresh button handler
+document.querySelector('#refreshBtn').addEventListener('click', () => {
+  refreshFireData();
+  if (document.querySelector('#frpToggle').checked || frpOverlay) {
     loadFRP();
   }
 });
@@ -161,6 +238,12 @@ document.querySelector('#s2SearchBtn').addEventListener('click', async () => {
 });
 
 // Initial data load
-console.log('Loading initial data...');
-loadFIRMS('viirs', viirsLayer);
+updateStatus('Application started. Loading initial data...');
+const initialDays = parseInt(document.querySelector('#fireDays').value);
+loadFIRMS('viirs', viirsLayer, initialDays);
 loadFRP();
+
+// Add helpful info
+setTimeout(() => {
+  updateStatus('Tip: Use the time period selector to view historical fire data', 'info');
+}, 3000);

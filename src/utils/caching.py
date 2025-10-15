@@ -9,8 +9,8 @@ def cache_get(key: str):
     return memory_cache.get(key)
 
 def cache_set(key: str, value, ttl: int | None = None):
-    if ttl:
-        memory_cache.ttl = ttl
+    # TTLCache.ttl is read-only, cannot be modified per-item
+    # All items use the cache's global TTL
     memory_cache[key] = value
 
 def file_cache_path(dir_path: str, key: str) -> str:
