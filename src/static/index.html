@@ -16,10 +16,16 @@
         <label>
           <strong>Region:</strong>
           <select id="regionSelect">
-            <option value="mainland" selected>Mainland Portugal</option>
-            <option value="madeira">Madeira</option>
-            <option value="azores">Açores</option>
-            <option value="all">All Regions</option>
+            <optgroup label="Portugal">
+              <option value="mainland" selected>Mainland Portugal</option>
+              <option value="madeira">Madeira</option>
+              <option value="azores">Açores</option>
+              <option value="all">All Portugal Regions</option>
+            </optgroup>
+            <optgroup label="Test Regions">
+              <option value="california">California, USA</option>
+              <option value="western_us">Western USA</option>
+            </optgroup>
           </select>
         </label>
       </div>

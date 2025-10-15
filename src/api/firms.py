@@ -1,16 +1,17 @@
 from fastapi import APIRouter, Query
 from src.services.firms_service import fetch_bbox
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from typing import Optional
 
 router = APIRouter()
 
 @router.get("/viirs")
-async def viirs(days: int = Query(1, ge=1, le=365)):
-    return await fetch_bbox("VIIRS", days)
+async def viirs(days: int = Query(1, ge=1, le=365), bbox: Optional[str] = None):
+    return await fetch_bbox("VIIRS", days, bbox_override=bbox)
 
 @router.get("/modis")
-async def modis(days: int = Query(1, ge=1, le=365)):
-    return await fetch_bbox("MODIS", days)
+async def modis(days: int = Query(1, ge=1, le=365), bbox: Optional[str] = None):
+    return await fetch_bbox("MODIS", days, bbox_override=bbox)
 
 def register_jobs(scheduler: AsyncIOScheduler):
     async def fetch_viirs():

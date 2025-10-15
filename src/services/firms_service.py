@@ -83,15 +83,23 @@ async def fetch_country(product: str, days: int = 1) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
-async def fetch_bbox(product: str, days: int = 1) -> dict:
-    """Fetch FIRMS data for the configured bbox (from .env)."""
+async def fetch_bbox(product: str, days: int = 1, bbox_override: str = None) -> dict:
+    """Fetch FIRMS data for the configured bbox (from .env) or override bbox.
+    
+    Args:
+        product: 'VIIRS' or 'MODIS'
+        days: Number of days to fetch (1-365)
+        bbox_override: Optional bbox string 'lon_min,lat_min,lon_max,lat_max' to override .env config
+    """
     product_key = PRODUCTS[product]
     api_key = settings.FIRMS_API_KEY
     if not api_key:
         return {"type": "FeatureCollection", "features": []}
 
+    # Use override bbox if provided, otherwise use configured bbox from .env
+    bbox_str = bbox_override if bbox_override else settings.PORTUGAL_BBOX
+    
     # FIRMS area API expects: [west,south,east,north] = [lon_min,lat_min,lon_max,lat_max]
-    bbox_str = settings.PORTUGAL_BBOX
     lon_min, lat_min, lon_max, lat_max = parse_bbox(bbox_str)
     area_spec = f"{lon_min},{lat_min},{lon_max},{lat_max}"
 

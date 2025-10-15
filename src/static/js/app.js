@@ -1,10 +1,45 @@
-// Region configurations
+// Region configurations with bbox [lon_min, lat_min, lon_max, lat_max]
 const REGIONS = {
-  mainland: { center: [39.5, -8.0], zoom: 7, name: 'Mainland Portugal' },
-  madeira: { center: [32.65, -16.9], zoom: 10, name: 'Madeira' },
-  azores: { center: [38.7, -27.2], zoom: 8, name: 'Açores' },
-  all: { center: [39.5, -15.0], zoom: 6, name: 'All Regions' }
+  mainland: { 
+    center: [39.5, -8.0], 
+    zoom: 7, 
+    name: 'Mainland Portugal',
+    bbox: [-9.5, 36.8, -6.0, 42.3]
+  },
+  madeira: { 
+    center: [32.65, -16.9], 
+    zoom: 10, 
+    name: 'Madeira',
+    bbox: [-17.3, 32.3, -16.2, 33.2]
+  },
+  azores: { 
+    center: [38.7, -27.2], 
+    zoom: 8, 
+    name: 'Açores',
+    bbox: [-31.3, 36.9, -24.7, 39.7]
+  },
+  all: { 
+    center: [39.5, -15.0], 
+    zoom: 6, 
+    name: 'All Portugal Regions',
+    bbox: [-31.3, 32.3, -6.0, 42.3]
+  },
+  california: {
+    center: [37.0, -119.5],
+    zoom: 6,
+    name: 'California (Test Region)',
+    bbox: [-124.5, 32.5, -114.0, 42.0]
+  },
+  western_us: {
+    center: [40.0, -115.0],
+    zoom: 5,
+    name: 'Western USA',
+    bbox: [-125.0, 31.0, -102.0, 49.0]
+  }
 };
+
+// Current active region
+let currentRegion = 'mainland';
 
 // Initialize map centered on Portugal
 const map = L.map('map').setView([39.5, -8.0], 7);
@@ -46,7 +81,7 @@ function updateBadge(elementId, count, status = '') {
 }
 
 // Load FIRMS fire data (VIIRS or MODIS)
-async function loadFIRMS(product, layer, days = 1) {
+async function loadFIRMS(product, layer, days = 1, bbox = null) {
   const productName = product.toUpperCase();
   const badgeId = product === 'viirs' ? 'viirsCount' : 'modisCount';
   
@@ -54,7 +89,13 @@ async function loadFIRMS(product, layer, days = 1) {
     updateStatus(`Loading ${productName} data (${days} days)...`);
     updateBadge(badgeId, 0, '...');
     
-    const res = await fetch(`/api/firms/${product}?days=${days}`);
+    // Build URL with optional bbox parameter
+    let url = `/api/firms/${product}?days=${days}`;
+    if (bbox) {
+      url += `&bbox=${bbox.join(',')}`;
+    }
+    
+    const res = await fetch(url);
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
@@ -235,24 +276,61 @@ function exportToCSV() {
 }
 
 // Region switching function
-function switchRegion(regionKey) {
+async function switchRegion(regionKey) {
   const region = REGIONS[regionKey];
   if (!region) return;
   
+  // Update current region
+  currentRegion = regionKey;
+  
+  // Center and zoom map
   map.setView(region.center, region.zoom);
-  updateStatus(`Switched to: ${region.name}`);
+  updateStatus(`Switching to: ${region.name}...`);
+  
+  // Clear all fire layers
+  viirsLayer.clearLayers();
+  modisLayer.clearLayers();
+  if (heatmapLayer) {
+    map.removeLayer(heatmapLayer);
+    heatmapLayer = null;
+  }
+  allFireData = [];
+  
+  // Reset badges
+  updateBadge('viirsCount', 0, '...');
+  updateBadge('modisCount', 0, '...');
+  updateBadge('heatmapCount', 0);
+  
+  // Get current time period
+  const days = parseInt(document.querySelector('#fireDays').value);
+  
+  // Reload fire data for new region
+  updateStatus(`Loading fire data for ${region.name}...`);
+  
+  // Load VIIRS if checked
+  if (document.querySelector('#viirsToggle').checked) {
+    await loadFIRMS('viirs', viirsLayer, days, region.bbox);
+  }
+  
+  // Load MODIS if checked
+  if (document.querySelector('#modisToggle').checked && map.hasLayer(modisLayer)) {
+    await loadFIRMS('modis', modisLayer, days, region.bbox);
+  }
+  
+  updateStatus(`✓ Switched to ${region.name}`, 'success');
 }
 
 // Helper function to refresh fire data
 function refreshFireData() {
   const days = parseInt(document.querySelector('#fireDays').value);
+  const region = REGIONS[currentRegion];
   updateStatus(`Refreshing fire data (${days} days)...`);
   
   if (document.querySelector('#viirsToggle').checked) {
-    loadFIRMS('viirs', viirsLayer, days);
+    loadFIRMS('viirs', viirsLayer, days, region.bbox);
   }
   if (document.querySelector('#modisToggle').checked && map.hasLayer(modisLayer)) {
-    loadFIRMS('modis', modisLayer, days);
+    loadFIRMS('modis', modisLayer, days, region.bbox);
   }
 }
 
@@ -269,7 +347,8 @@ document.querySelector('#modisToggle').addEventListener('change', (e) => {
   if (e.target.checked) {
     if (!map.hasLayer(modisLayer)) {
       const days = parseInt(document.querySelector('#fireDays').value);
-      loadFIRMS('modis', modisLayer, days);
+      const region = REGIONS[currentRegion];
+      loadFIRMS('modis', modisLayer, days, region.bbox);
     }
     modisLayer.addTo(map);
   } else {
@@ -377,33 +456,46 @@ async function initializeApp() {
   updateStatus('Application started. Loading configuration...');
   
   try {
-    // Fetch server config to get current bbox/center
+    // Fetch server config to get current bbox/center from .env
     const configRes = await fetch('/api/config');
     const config = await configRes.json();
     
-    // Center map on configured region
-    if (config.center) {
-      const [lat, lon] = config.center;
-      map.setView([lat, lon], 7);
-      updateStatus(`Map centered on configured region (${lat.toFixed(2)}, ${lon.toFixed(2)})`);
+    // Try to detect which region matches the configured bbox
+    let detectedRegion = 'mainland'; // default
+    if (config.bbox) {
+      const [cfg_lon_min, cfg_lat_min, cfg_lon_max, cfg_lat_max] = config.bbox;
+      // Check if bbox matches California
+      if (cfg_lon_min < -100) { // Simple heuristic: California is west of -100
+        detectedRegion = 'california';
+      }
     }
     
-    // Load initial fire data
+    // Set the region selector to match
+    document.querySelector('#regionSelect').value = detectedRegion;
+    currentRegion = detectedRegion;
+    const region = REGIONS[currentRegion];
+    
+    // Center map on detected region
+    map.setView(region.center, region.zoom);
+    updateStatus(`Detected region: ${region.name}`);
+    
+    // Load initial fire data with detected region's bbox
     const initialDays = parseInt(document.querySelector('#fireDays').value);
-    loadFIRMS('viirs', viirsLayer, initialDays);
+    loadFIRMS('viirs', viirsLayer, initialDays, region.bbox);
     loadFRP();
     
     // Add helpful info
     setTimeout(() => {
-      updateStatus('Tip: Use the time period selector to view historical fire data', 'info');
+      updateStatus('Tip: Use the region selector to switch between Portugal and California', 'info');
     }, 3000);
   } catch (error) {
     console.error('Error initializing app:', error);
     updateStatus('Error loading configuration, using default map view', 'warning');
     
     // Fallback to default behavior
+    const region = REGIONS[currentRegion];
     const initialDays = parseInt(document.querySelector('#fireDays').value);
-    loadFIRMS('viirs', viirsLayer, initialDays);
+    loadFIRMS('viirs', viirsLayer, initialDays, region.bbox);
     loadFRP();
   }
 }
