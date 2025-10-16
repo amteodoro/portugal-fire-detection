@@ -262,7 +262,7 @@ def generate_sample_images(
             samples.append({
                 'scene_id': scene['id'],
                 'date': scene['date'],
-                'image_path': str(output_path.relative_to(Path.cwd())),
+                'image_path': str(output_path),
                 'image_url': f"/static/samples/{output_path.name}"
             })
     

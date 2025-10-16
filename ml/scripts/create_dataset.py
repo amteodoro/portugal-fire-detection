@@ -18,6 +18,7 @@ import pandas as pd
 import rasterio
 from rasterio.windows import Window
 from rasterio.transform import rowcol
+from rasterio.warp import transform as reproject_coords
 from tqdm import tqdm
 
 # Setup logging
@@ -40,14 +41,20 @@ class DatasetGenerator:
         self.negative_ratio = self.config['tiles']['negative_sample_ratio']
         self.bands = self.config['sentinel2']['bands']
         self.band_names = self.config['sentinel2']['band_names']
+        self.band_save_names = self.config['sentinel2'].get('band_save_names', self.bands)
         
         self.tiles_dir = Path(self.config['data']['tiles_dir'])
         self.labels_dir = Path(self.config['data']['labels_dir'])
         self.tiles_dir.mkdir(parents=True, exist_ok=True)
         self.labels_dir.mkdir(parents=True, exist_ok=True)
         
+        # Use fixed seed for reproducible train/val/test splits
+        # but keep spatial offsets random to prevent center bias
         random.seed(self.config['splits']['random_seed'])
         np.random.seed(self.config['splits']['random_seed'])
+        
+        # Create separate random state for spatial offsets (not seeded)
+        self.spatial_random = random.Random()  # Uses system entropy
     
     def load_matched_dataset(self, dataset_path: str) -> pd.DataFrame:
         """Load the matched FIRMS-scene dataset."""
@@ -67,8 +74,10 @@ class DatasetGenerator:
         """
         bands_data = {}
         
-        for band in self.bands:
-            band_file = scene_path / f"{band}.tif"
+        for i, band in enumerate(self.bands):
+            # Use band_save_names for file lookup (e.g., B04, B08, etc.)
+            file_band_name = self.band_save_names[i] if i < len(self.band_save_names) else band
+            band_file = scene_path / f"{file_band_name}.tif"
             
             if not band_file.exists():
                 logger.warning(f"Band file not found: {band_file}")
@@ -96,28 +105,40 @@ class DatasetGenerator:
         lon: float,
         lat: float,
         tile_size: int = 256
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[Tuple[np.ndarray, Dict]]:
         """
         Extract a tile centered at a geographic location.
         
         Args:
             bands_data: Dictionary of band arrays and metadata
-            lon: Longitude of center point
-            lat: Latitude of center point
+            lon: Longitude of center point (EPSG:4326)
+            lat: Latitude of center point (EPSG:4326)
             tile_size: Size of tile in pixels
             
         Returns:
-            Numpy array of shape (bands, tile_size, tile_size), or None if invalid
+            Tuple of (tile array, metadata dict with fire location), or None if invalid
         """
         transform = bands_data['transform']
+        crs = bands_data['crs']
         
-        # Convert lon/lat to pixel coordinates
-        row, col = rowcol(transform, lon, lat)
+        # Reproject lon/lat (EPSG:4326) to raster CRS
+        xs, ys = reproject_coords('EPSG:4326', crs, [lon], [lat])
+        x, y = xs[0], ys[0]
         
-        # Calculate tile boundaries
+        # Convert reprojected coordinates to pixel coordinates
+        row, col = rowcol(transform, x, y)
+        
+        # Calculate tile boundaries with random offset to prevent center bias
         half_size = tile_size // 2
-        row_start = max(0, row - half_size)
-        col_start = max(0, col - half_size)
+        
+        # Add random offset (±25% of half_size) so fire isn't always centered
+        # Use separate random state to ensure true randomness (not seeded)
+        offset_range = int(half_size * 0.25)
+        row_offset = self.spatial_random.randint(-offset_range, offset_range)
+        col_offset = self.spatial_random.randint(-offset_range, offset_range)
+        
+        row_start = max(0, row - half_size + row_offset)
+        col_start = max(0, col - half_size + col_offset)
         
         # Extract tile from each band
         tiles = []
@@ -142,7 +163,23 @@ class DatasetGenerator:
         # Stack bands: shape (bands, height, width)
         multi_band_tile = np.stack(tiles, axis=0)
         
-        return multi_band_tile
+        # Calculate where the fire center is within this tile
+        # (accounting for the offset we applied)
+        fire_row_in_tile = half_size - row_offset
+        fire_col_in_tile = half_size - col_offset
+        
+        # Return tile and metadata with fire location and scene position
+        metadata = {
+            'fire_pixel_row': int(fire_row_in_tile),
+            'fire_pixel_col': int(fire_col_in_tile),
+            'offset_applied': [int(row_offset), int(col_offset)],  # List for JSON serialization
+            # Store tile position in original scene for RGB extraction
+            'scene_row_start': int(row_start),
+            'scene_col_start': int(col_start),
+            'tile_size': int(tile_size)
+        }
+        
+        return multi_band_tile, metadata
     
     def generate_negative_samples(
         self,
@@ -183,8 +220,13 @@ class DatasetGenerator:
             row = random.randint(self.tile_size, height - self.tile_size)
             col = random.randint(self.tile_size, width - self.tile_size)
             
-            # Convert to lon/lat
-            lon, lat = rasterio.transform.xy(transform, row, col)
+            # Convert pixel to raster CRS coordinates
+            x, y = rasterio.transform.xy(transform, row, col)
+            
+            # Convert to lon/lat (EPSG:4326) for distance check
+            crs = bands_data['crs']
+            lons, lats = reproject_coords(crs, 'EPSG:4326', [x], [y])
+            lon, lat = lons[0], lats[0]
             
             # Check distance from all fires
             too_close = False
@@ -197,10 +239,11 @@ class DatasetGenerator:
             if too_close:
                 continue
             
-            # Extract tile
-            tile = self.extract_tile_at_location(bands_data, lon, lat, self.tile_size)
+            # Extract tile (no fire metadata needed for negatives)
+            result = self.extract_tile_at_location(bands_data, lon, lat, self.tile_size)
             
-            if tile is not None:
+            if result is not None:
+                tile, _ = result  # Ignore metadata for negative samples
                 negative_tiles.append(tile)
         
         if len(negative_tiles) < n_samples:
@@ -232,7 +275,8 @@ class DatasetGenerator:
         label: int,
         scene_id: str,
         fire_id: str,
-        sample_type: str
+        sample_type: str,
+        fire_location: Optional[Dict] = None
     ) -> Path:
         """
         Save a tile and its label.
@@ -264,6 +308,18 @@ class DatasetGenerator:
             'bands': self.band_names,
             'shape': list(tile.shape)
         }
+        
+        # Add fire location if provided (for positive samples)
+        if fire_location is not None:
+            label_data['fire_pixel_row'] = int(fire_location['fire_pixel_row'])
+            label_data['fire_pixel_col'] = int(fire_location['fire_pixel_col'])
+            # Store scene coordinates for RGB extraction later  
+            if fire_location.get('scene_row_start') is not None:
+                label_data['scene_row_start'] = int(fire_location['scene_row_start'])
+            if fire_location.get('scene_col_start') is not None:
+                label_data['scene_col_start'] = int(fire_location['scene_col_start'])
+            if fire_location.get('tile_size') is not None:
+                label_data['tile_size'] = int(fire_location['tile_size'])
         
         label_path = self.labels_dir / f"{tile_id}.json"
         with open(label_path, 'w') as f:
@@ -304,15 +360,18 @@ class DatasetGenerator:
             fire_locations.append((lon, lat))
             
             # Extract tile centered on fire
-            tile = self.extract_tile_at_location(bands_data, lon, lat, self.tile_size)
+            result = self.extract_tile_at_location(bands_data, lon, lat, self.tile_size)
             
-            if tile is not None:
+            if result is not None:
+                tile, fire_metadata = result
+                
                 # Normalize
                 tile = self.normalize_tile(tile)
                 
-                # Save
+                # Save with fire location metadata
                 self.save_tile(tile, label=1, scene_id=scene_id,
-                             fire_id=str(row['fire_id']), sample_type='positive')
+                             fire_id=str(row['fire_id']), sample_type='positive',
+                             fire_location=fire_metadata)
                 positive_count += 1
         
         # Generate negative samples
@@ -372,17 +431,22 @@ class DatasetGenerator:
         logger.info("="*50)
         logger.info(f"Total positive samples (fire): {total_positive}")
         logger.info(f"Total negative samples (no-fire): {total_negative}")
-        logger.info(f"Total samples: {total_positive + total_negative}")
-        logger.info(f"Class balance: {total_positive / (total_positive + total_negative):.2%} fire")
+        total_samples = total_positive + total_negative
+        logger.info(f"Total samples: {total_samples}")
+        if total_samples > 0:
+            logger.info(f"Class balance: {total_positive / total_samples:.2%} fire")
+        else:
+            logger.warning("No samples generated. Check that Sentinel-2 band files exist.")
         logger.info(f"Tiles saved to: {self.tiles_dir}")
         logger.info(f"Labels saved to: {self.labels_dir}")
         
         # Save summary
+        total_samples = total_positive + total_negative
         summary = {
             'total_positive': total_positive,
             'total_negative': total_negative,
-            'total_samples': total_positive + total_negative,
-            'class_balance': total_positive / (total_positive + total_negative),
+            'total_samples': total_samples,
+            'class_balance': total_positive / total_samples if total_samples > 0 else 0,
             'tile_size': self.tile_size,
             'bands': self.band_names
         }

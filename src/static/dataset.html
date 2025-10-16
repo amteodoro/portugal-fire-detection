@@ -4,20 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Training Dataset Summary</title>
+    <link rel="stylesheet" href="/static/css/styles.css"/>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #0f172a;
-            color: #e2e8f0;
-            line-height: 1.6;
-        }
-
         .container {
             max-width: 1400px;
             margin: 0 auto;
@@ -26,15 +14,12 @@
 
         header {
             text-align: center;
-            margin-bottom: 3rem;
-            padding: 2rem;
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            border-radius: 12px;
-            border: 1px solid #334155;
+            margin-bottom: 2rem;
+            padding: 1.5rem;
         }
 
         h1 {
-            font-size: 2.5rem;
+            font-size: 2rem;
             margin-bottom: 0.5rem;
             background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
             -webkit-background-clip: text;
@@ -43,12 +28,12 @@
         }
 
         .subtitle {
-            color: #94a3b8;
-            font-size: 1.1rem;
+            color: #6b7280;
+            font-size: 1rem;
+            margin-bottom: 1rem;
         }
 
         .refresh-btn {
-            margin-top: 1rem;
             padding: 0.75rem 1.5rem;
             background: #3b82f6;
             color: white;
@@ -57,6 +42,8 @@
             cursor: pointer;
             font-size: 1rem;
             transition: all 0.3s;
+            width: auto;
+            display: inline-block;
         }
 
         .refresh-btn:hover {
@@ -65,7 +52,7 @@
         }
 
         .refresh-btn:disabled {
-            background: #475569;
+            background: #9ca3af;
             cursor: not-allowed;
             transform: none;
         }
@@ -78,17 +65,18 @@
         }
 
         .stat-card {
-            background: #1e293b;
+            background: #ffffff;
             padding: 1.5rem;
             border-radius: 12px;
-            border: 1px solid #334155;
+            border: 1px solid #e5e7eb;
             transition: all 0.3s;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
 
         .stat-card:hover {
             border-color: #3b82f6;
             transform: translateY(-4px);
-            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.2);
+            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.15);
         }
 
         .stat-icon {
@@ -104,7 +92,7 @@
         }
 
         .stat-label {
-            color: #94a3b8;
+            color: #6b7280;
             font-size: 0.9rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
@@ -113,17 +101,18 @@
         .stat-detail {
             margin-top: 0.5rem;
             padding-top: 0.5rem;
-            border-top: 1px solid #334155;
+            border-top: 1px solid #e5e7eb;
             font-size: 0.9rem;
-            color: #cbd5e1;
+            color: #4b5563;
         }
 
         .section {
-            background: #1e293b;
+            background: #ffffff;
             padding: 2rem;
             border-radius: 12px;
-            border: 1px solid #334155;
+            border: 1px solid #e5e7eb;
             margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
 
         .section-title {
@@ -141,24 +130,25 @@
         }
 
         .sample-card {
-            background: #0f172a;
+            background: #ffffff;
             border-radius: 8px;
             overflow: hidden;
-            border: 1px solid #334155;
+            border: 1px solid #e5e7eb;
             transition: all 0.3s;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
 
         .sample-card:hover {
             border-color: #3b82f6;
             transform: scale(1.02);
-            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.2);
         }
 
         .sample-image {
             width: 100%;
             height: 250px;
             object-fit: cover;
-            background: #0f172a;
+            background: #f3f4f6;
         }
 
         .sample-info {
@@ -210,24 +200,25 @@
         .splits-table td {
             padding: 0.75rem;
             text-align: left;
-            border-bottom: 1px solid #334155;
+            border-bottom: 1px solid #e5e7eb;
         }
 
         .splits-table th {
-            color: #94a3b8;
+            color: #6b7280;
             font-weight: 600;
             font-size: 0.9rem;
+            background: #f9fafb;
         }
 
         .splits-table tr:hover {
-            background: rgba(59, 130, 246, 0.1);
+            background: #f9fafb;
         }
 
         .loading {
             text-align: center;
             padding: 4rem;
             font-size: 1.2rem;
-            color: #64748b;
+            color: #6b7280;
         }
 
         .error {
@@ -242,7 +233,7 @@
         .progress-bar {
             width: 100%;
             height: 8px;
-            background: #334155;
+            background: #e5e7eb;
             border-radius: 4px;
             overflow: hidden;
             margin-top: 0.5rem;
@@ -257,7 +248,7 @@
         .legend {
             margin-top: 1rem;
             padding: 1rem;
-            background: rgba(59, 130, 246, 0.1);
+            background: #eff6ff;
             border-radius: 8px;
             border-left: 3px solid #3b82f6;
         }
@@ -270,15 +261,74 @@
 
         .legend-text {
             font-size: 0.9rem;
-            color: #cbd5e1;
+            color: #4b5563;
             line-height: 1.6;
+        }
+
+        .data-fetch-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .fetch-card {
+            background: #f9fafb;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .fetch-card h3 {
+            margin: 0 0 0.75rem 0;
+            color: #1f2937;
+            font-size: 1.1rem;
+        }
+
+        .fetch-card p {
+            color: #6b7280;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .fetch-command {
+            background: #1f2937;
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 1rem 0;
+            overflow-x: auto;
+        }
+
+        .fetch-command code {
+            color: #10b981;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.85rem;
+            display: block;
+            white-space: nowrap;
+        }
+
+        .fetch-note {
+            font-size: 0.85rem !important;
+            color: #9ca3af !important;
+            font-style: italic;
+            margin-top: 0.5rem !important;
         }
     </style>
 </head>
 <body>
+    <nav class="navbar">
+        <div class="navbar-brand">Portugal Fire Detection</div>
+        <ul class="navbar-nav">
+            <li class="nav-item">
+                <a href="/static/index.html" class="nav-link">Map View</a>
+            </li>
+            <li class="nav-item">
+                <a href="/static/dataset.html" class="nav-link active">Dataset</a>
+            </li>
+        </ul>
+    </nav>
     <div class="container">
         <header>
-            <h1>🛰️ Training Dataset Summary</h1>
+            <h1>Training Dataset Summary</h1>
             <p class="subtitle">Sentinel-2 Imagery & FIRMS Fire Detection Data</p>
             <button class="refresh-btn" onclick="refreshData()">🔄 Refresh Data</button>
         </header>
@@ -321,6 +371,121 @@
                 </div>
             </div>
 
+            <!-- Data Fetching -->  
+            <div class="section">
+                <h2 class="section-title">Fetch More Training Data</h2>
+                <p style="color: #6b7280; margin-bottom: 1.5rem;">
+                    To improve model performance, download more Sentinel-2 imagery and FIRMS fire detection data.
+                </p>
+                
+                <div class="data-fetch-grid">
+                    <div class="fetch-card">
+                        <h3>Sentinel-2 Imagery</h3>
+                        <p>Download satellite imagery covering fire events.</p>
+                        <form id="sentinel2-form" style="margin-top: 1rem;">
+                            <label style="display: block; margin-bottom: 0.5rem;">
+                                <strong>Start Date:</strong>
+                                <input type="date" id="s2-start" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                            </label>
+                            <label style="display: block; margin-bottom: 0.5rem;">
+                                <strong>End Date:</strong>
+                                <input type="date" id="s2-end" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                            </label>
+                            <label style="display: block; margin-bottom: 0.5rem;">
+                                <strong>Max Cloud Cover (%):</strong>
+                                <input type="number" id="s2-cloud" min="0" max="100" value="20" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                            </label>
+                            <label style="display: block; margin-bottom: 0.5rem;">
+                                <strong>Max Scenes (optional):</strong>
+                                <input type="number" id="s2-max-scenes" min="1" placeholder="All scenes" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                            </label>
+                            <button type="submit" class="refresh-btn" style="width: 100%; margin-top: 0.5rem;">Download Sentinel-2</button>
+                            <div id="s2-status" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
+                        </form>
+                        <p class="fetch-note" style="margin-top: 0.5rem;">Downloads Sentinel-2 L2A scenes from STAC catalog</p>
+                    </div>
+                    
+                    <div class="fetch-card">
+                        <h3>Historical FIRMS Data</h3>
+                        <p>Download historical fire detections beyond 10-day limit. Requires API key.</p>
+                        <form id="firms-form" style="margin-top: 1rem;">
+                            <label style="display: block; margin-bottom: 0.5rem;">
+                                <strong>Start Date: <span style="color: red;">*</span></strong>
+                                <input type="date" id="firms-start" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                            </label>
+                            <label style="display: block; margin-bottom: 0.5rem;">
+                                <strong>End Date: <span style="color: red;">*</span></strong>
+                                <input type="date" id="firms-end" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                            </label>
+                            <div style="display: block; margin-bottom: 0.5rem;">
+                                <strong>Products:</strong>
+                                <label style="display: inline-block; margin-right: 1rem; margin-top: 0.25rem;">
+                                    <input type="checkbox" id="firms-viirs" checked> VIIRS
+                                </label>
+                                <label style="display: inline-block;">
+                                    <input type="checkbox" id="firms-modis" checked> MODIS
+                                </label>
+                            </div>
+                            <label style="display: block; margin-bottom: 0.5rem;">
+                                <strong>Region Name (optional):</strong>
+                                <input type="text" id="firms-region" placeholder="e.g., portugal_summer_2024" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                            </label>
+                            <button type="submit" class="refresh-btn" style="width: 100%; margin-top: 0.5rem;">Fetch FIRMS Data</button>
+                            <div id="firms-status" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
+                        </form>
+                        <p class="fetch-note" style="margin-top: 0.5rem;">Fetches historical fire data from NASA FIRMS archive</p>
+                    </div>
+                    
+                    <div class="fetch-card">
+                        <h3>OpenEO Download</h3>
+                        <p style="background: #fef3c7; padding: 0.75rem; border-radius: 6px; border-left: 3px solid #f59e0b; margin-bottom: 0.5rem;">
+                            <strong style="color: #d97706;">⚠️ NOT RECOMMENDED for Portugal</strong><br>
+                            <span style="font-size: 0.85rem; color: #92400e;">OpenEO batch jobs run out of memory for large areas. Use <strong>Sentinel-2 Imagery</strong> card instead for Portugal.</span>
+                        </p>
+                        <p>Only use for small test regions (&lt;100km x 100km). Requires Copernicus account.</p>
+                        <form id="openeo-form" style="margin-top: 1rem;">
+                            <label style="display: block; margin-bottom: 0.5rem;">
+                                <strong>Start Date:</strong>
+                                <input type="date" id="openeo-start" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                            </label>
+                            <label style="display: block; margin-bottom: 0.5rem;">
+                                <strong>End Date:</strong>
+                                <input type="date" id="openeo-end" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                            </label>
+                            <label style="display: block; margin-bottom: 0.5rem;">
+                                <strong>Max Cloud Cover (%):</strong>
+                                <input type="number" id="openeo-cloud" min="0" max="100" value="20" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                            </label>
+                            <div style="background: #eff6ff; padding: 0.75rem; border-radius: 6px; margin: 0.5rem 0; border-left: 3px solid #3b82f6;">
+                                <p style="font-size: 0.85rem; color: #4b5563; margin: 0;"><strong>ℹ️ Note:</strong> Uses asynchronous batch jobs. Can process entire Portugal. Job will run on OpenEO servers and may take several minutes.</p>
+                            </div>
+                            <button type="submit" class="refresh-btn" style="width: 100%; margin-top: 0.5rem;">Download via OpenEO</button>
+                            <div id="openeo-status" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
+                        </form>
+                        <p class="fetch-note" style="margin-top: 0.5rem;">Uses batch jobs for reliable large-area downloads. Progress updates every ~10 seconds.</p>
+                    </div>
+                    
+                    <div class="fetch-card">
+                        <h3>Prepare Training Dataset</h3>
+                        <p>Process Sentinel-2 and FIRMS data into training-ready tiles and splits.</p>
+                        <form id="splits-form" style="margin-top: 1rem;">
+                            <div style="background: #eff6ff; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem; border-left: 3px solid #3b82f6;">
+                                <p style="font-size: 0.85rem; color: #4b5563; margin: 0;"><strong>ℹ️ Automated 3-Step Pipeline:</strong></p>
+                                <ol style="font-size: 0.8rem; color: #4b5563; margin: 0.5rem 0 0 1.2rem; padding: 0;">
+                                    <li>Matches FIRMS fires to Sentinel-2 scenes</li>
+                                    <li>Extracts tiles from matched pairs</li>
+                                    <li>Creates train/val/test splits</li>
+                                </ol>
+                            </div>
+                            <p style="color: #6b7280; font-size: 0.85rem; margin-bottom: 1rem;">Requires Sentinel-2 imagery and FIRMS data to be downloaded first.</p>
+                            <button type="submit" class="refresh-btn" style="width: 100%;">Prepare Training Dataset</button>
+                            <div id="splits-status" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
+                        </form>
+                        <p class="fetch-note" style="margin-top: 0.5rem;">Uses config from ml/configs/config.yaml for split ratios</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Training Splits -->
             <div class="section" id="splits-section" style="display: none;">
                 <h2 class="section-title">📊 Training Data Splits</h2>
@@ -338,9 +503,30 @@
                 </table>
             </div>
 
+            <!-- Training Tile Samples -->
+            <div class="section">
+                <h2 class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>🎯 Training Tile Samples</span>
+                    <span>
+                        <button id="btn-new-samples" class="refresh-btn" style="margin-right:0.5rem;">🎲 New Sample Set</button>
+                        <button id="btn-regenerate-samples" class="refresh-btn" style="background:#10b981;">🎨 Regenerate Previews</button>
+                    </span>
+                </h2>
+                <div class="legend">
+                    <div class="legend-title">Quality Check: Fire Detection Tiles</div>
+                    <div class="legend-text">
+                        <strong>What you're seeing:</strong> Sample 256x256 pixel tiles extracted for model training.<br>
+                        <strong>Fire tiles:</strong> Red crosshair marks the FIRMS fire detection center<br>
+                        <strong>False Color (SWIR2-NIR-Red):</strong> Active fires appear as bright red/white spots<br>
+                        <em>Verify that fire tiles show actual hotspots and no-fire tiles look normal</em>
+                    </div>
+                </div>
+                <div class="samples-grid" id="tile-samples-grid"></div>
+            </div>
+
             <!-- False Color Samples -->
             <div class="section">
-                <h2 class="section-title">🖼️ False Color Samples</h2>
+                <h2 class="section-title">🖼️ Scene False Color Samples</h2>
                 <div class="legend">
                     <div class="legend-title">False Color Composite (SWIR2-NIR-Red)</div>
                     <div class="legend-text">
@@ -483,8 +669,391 @@
             }
         }
 
+        // Function to load tile samples
+        async function loadTileSamples() {
+            try {
+                const response = await fetch('/api/dataset/tile-samples');
+                if (!response.ok) throw new Error('Failed to load tile samples');
+                
+                const data = await response.json();
+                const grid = document.getElementById('tile-samples-grid');
+                
+                if (!data.samples || data.samples.length === 0) {
+                    // Check if we can generate samples from existing tiles
+                    if (data.can_generate) {
+                        grid.innerHTML = `
+                            <div style="text-align: center; padding: 2rem;">
+                                <p style="color: #64748b; margin-bottom: 1rem;">Tiles exist but visualizations need to be generated.</p>
+                                <button id="generate-samples-btn" class="refresh-btn" onclick="generateTileSamples()">
+                                    🎨 Generate Tile Previews
+                                </button>
+                            </div>
+                        `;
+                    } else {
+                        grid.innerHTML = '<p style="color: #64748b;">No training tiles available. Run "Prepare Training Dataset" first.</p>';
+                    }
+                    return;
+                }
+                
+                grid.innerHTML = '';
+                
+                // Sort samples: fire first, then no-fire
+                const sortedSamples = [...data.samples].sort((a, b) => {
+                    if (a.type === 'fire' && b.type !== 'fire') return -1;
+                    if (a.type !== 'fire' && b.type === 'fire') return 1;
+                    return 0;
+                });
+                
+                const cacheBust = `?t=${Date.now()}`;
+                sortedSamples.forEach(sample => {
+                    const card = document.createElement('div');
+                    card.className = 'sample-card';
+                    const imageUrl = `${data.base_path}/${sample.filename}${cacheBust}`;
+                    const label = sample.type === 'fire' ? 'FIRE DETECTION' : 'NO FIRE';
+                    const labelColor = sample.type === 'fire' ? '#ef4444' : '#22c55e';
+                    
+                    card.innerHTML = `
+                        <img src="${imageUrl}" alt="${label}" class="sample-image">
+                        <div class="sample-info">
+                            <div class="sample-date" style="color: ${labelColor}; font-weight: bold;">${label}</div>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Error loading tile samples:', error);
+            }
+        }
+        
+        // Function to generate tile samples from existing tiles
+        async function generateTileSamples(options = {}) {
+            const { seed = null, buttonId = 'generate-samples-btn' } = options;
+            const btn = document.getElementById(buttonId);
+            const grid = document.getElementById('tile-samples-grid');
+            
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '⏳ Generating previews...';
+            }
+            
+            try {
+                const payload = { n_samples: 8 };
+                if (seed !== null) payload.seed = seed;
+                
+                const response = await fetch('/api/dataset/generate-tile-samples', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to generate samples');
+                }
+                
+                // Stream progress
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                
+                grid.innerHTML = '<div style="color: #10b981; font-family: monospace; font-size: 0.9rem; padding: 1rem; background: #1f2937; border-radius: 6px;"></div>';
+                const logDiv = grid.querySelector('div');
+                
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, {stream: true});
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop();
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.substring(6));
+                                if (data.message) {
+                                    const p = document.createElement('p');
+                                    p.style.margin = '0.25rem 0';
+                                    p.textContent = data.message;
+                                    if (data.type === 'error') p.style.color = '#ef4444';
+                                    else if (data.type === 'complete') p.style.color = '#22c55e';
+                                    logDiv.appendChild(p);
+                                }
+                            } catch (e) {
+                                console.error('Failed to parse SSE:', e);
+                            }
+                        }
+                    }
+                }
+                
+                // Reload samples after generation
+                setTimeout(() => loadTileSamples(), 500);
+            } catch (error) {
+                grid.innerHTML = `<p style="color: #ef4444;">Error: ${error.message}</p>`;
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = btn.id === 'btn-new-samples' ? '🎲 New Sample Set' : '🎨 Regenerate Previews';
+                }
+            }
+        }
+        
         // Load on page load
         loadSummary();
+        loadTileSamples();
+
+        // Helper function to show status messages
+        function showStatus(elementId, message, type) {
+            const statusEl = document.getElementById(elementId);
+            statusEl.innerHTML = message;
+            statusEl.style.color = type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : '#3b82f6';
+        }
+
+        // Helper function to create progress log container
+        function createProgressLog(statusId) {
+            const statusEl = document.getElementById(statusId);
+            const logId = statusId + '-log';
+            
+            // Remove existing log if any
+            const existingLog = document.getElementById(logId);
+            if (existingLog) existingLog.remove();
+            
+            const logContainer = document.createElement('div');
+            logContainer.id = logId;
+            logContainer.style.cssText = `
+                margin-top: 0.5rem;
+                padding: 0.75rem;
+                background: #1f2937;
+                border-radius: 6px;
+                max-height: 300px;
+                overflow-y: auto;
+                font-family: monospace;
+                font-size: 0.8rem;
+                color: #10b981;
+                white-space: pre-wrap;
+                word-break: break-word;
+            `;
+            statusEl.parentElement.appendChild(logContainer);
+            return logContainer;
+        }
+
+        // Helper function to append log line
+        function appendLog(logContainer, message, type) {
+            const line = document.createElement('div');
+            line.style.marginBottom = '0.25rem';
+            
+            if (type === 'stderr') {
+                line.style.color = '#fbbf24'; // yellow
+            } else if (type === 'error') {
+                line.style.color = '#ef4444'; // red
+            } else if (type === 'complete') {
+                line.style.color = '#22c55e'; // green
+                line.style.fontWeight = 'bold';
+            }
+            
+            line.textContent = message;
+            logContainer.appendChild(line);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // Helper function to handle SSE streaming
+        async function handleStreamingRequest(url, payload, statusId, btn) {
+            const logContainer = createProgressLog(statusId);
+            let hasError = false;
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const {done, value} = await reader.read();
+                    
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, {stream: true});
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop(); // Keep incomplete line in buffer
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.substring(6));
+                                
+                                if (data.type === 'complete') {
+                                    appendLog(logContainer, '✓ ' + data.message, 'complete');
+                                    showStatus(statusId, '✅ Process completed successfully', 'success');
+                                } else if (data.type === 'error') {
+                                    appendLog(logContainer, '✗ ' + data.message, 'error');
+                                    showStatus(statusId, '❌ Process failed', 'error');
+                                    hasError = true;
+                                } else {
+                                    appendLog(logContainer, data.message, data.type);
+                                }
+                            } catch (e) {
+                                console.error('Failed to parse SSE data:', e);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                appendLog(logContainer, '✗ Network error: ' + error.message, 'error');
+                showStatus(statusId, '❌ Connection error', 'error');
+                hasError = true;
+            } finally {
+                setButtonLoading(btn, false);
+            }
+
+            return !hasError;
+        }
+
+        // Helper function to set button loading state
+        function setButtonLoading(button, loading, originalText) {
+            if (loading) {
+                button.disabled = true;
+                button.dataset.originalText = button.textContent;
+                button.textContent = '⏳ Processing...';
+            } else {
+                button.disabled = false;
+                button.textContent = originalText || button.dataset.originalText;
+            }
+        }
+
+        // Sentinel-2 Form Handler
+        document.getElementById('sentinel2-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            const statusId = 's2-status';
+
+            const startDate = document.getElementById('s2-start').value;
+            const endDate = document.getElementById('s2-end').value;
+            const maxCloud = document.getElementById('s2-cloud').value;
+            const maxScenes = document.getElementById('s2-max-scenes').value;
+
+            if (!startDate || !endDate) {
+                showStatus(statusId, '⚠️ Please provide start and end dates', 'error');
+                return;
+            }
+
+            setButtonLoading(btn, true);
+            showStatus(statusId, '🔄 Starting Sentinel-2 download...', 'info');
+
+            const payload = {
+                start_date: startDate,
+                end_date: endDate,
+                max_cloud: parseInt(maxCloud)
+            };
+            if (maxScenes) payload.max_scenes = parseInt(maxScenes);
+
+            await handleStreamingRequest('/api/dataset/download-sentinel2', payload, statusId, btn);
+        });
+
+        // FIRMS Form Handler
+        document.getElementById('firms-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            const statusId = 'firms-status';
+
+            const startDate = document.getElementById('firms-start').value;
+            const endDate = document.getElementById('firms-end').value;
+            const viirs = document.getElementById('firms-viirs').checked;
+            const modis = document.getElementById('firms-modis').checked;
+            const region = document.getElementById('firms-region').value;
+
+            if (!startDate || !endDate) {
+                showStatus(statusId, '⚠️ Start date and end date are required', 'error');
+                return;
+            }
+
+            if (!viirs && !modis) {
+                showStatus(statusId, '⚠️ Please select at least one product (VIIRS or MODIS)', 'error');
+                return;
+            }
+
+            setButtonLoading(btn, true);
+            showStatus(statusId, '🔄 Fetching FIRMS data...', 'info');
+
+            const products = [];
+            if (viirs) products.push('VIIRS');
+            if (modis) products.push('MODIS');
+
+            const payload = {
+                start_date: startDate,
+                end_date: endDate,
+                products: products
+            };
+            if (region) payload.region = region;
+
+            await handleStreamingRequest('/api/dataset/fetch-firms-data', payload, statusId, btn);
+        });
+
+        // OpenEO Form Handler
+        document.getElementById('openeo-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            const statusId = 'openeo-status';
+
+            const startDate = document.getElementById('openeo-start').value;
+            const endDate = document.getElementById('openeo-end').value;
+            const maxCloud = document.getElementById('openeo-cloud').value;
+
+            if (!startDate || !endDate) {
+                showStatus(statusId, '⚠️ Please provide start and end dates', 'error');
+                return;
+            }
+
+            setButtonLoading(btn, true);
+            showStatus(statusId, '🔄 Starting OpenEO batch job (this may take several minutes)...', 'info');
+
+            const payload = {
+                start_date: startDate,
+                end_date: endDate,
+                max_cloud: parseInt(maxCloud)
+            };
+
+            await handleStreamingRequest('/api/dataset/download-openeo', payload, statusId, btn);
+        });
+
+        // Prepare Splits Form Handler
+        document.getElementById('splits-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            const statusId = 'splits-status';
+
+            setButtonLoading(btn, true);
+            showStatus(statusId, '🔄 Preparing training splits...', 'info');
+
+            const success = await handleStreamingRequest('/api/dataset/prepare-splits', {}, statusId, btn);
+            
+            if (success) {
+                // Refresh the summary and tile samples to show updated statistics
+                setTimeout(() => {
+                    loadSummary();
+                    loadTileSamples();
+                }, 1000);
+            }
+        });
+        
+        // Tile Sample Buttons
+        document.getElementById('btn-new-samples')?.addEventListener('click', async () => {
+            // Generate new samples with random seed (no seed = random)
+            await generateTileSamples({ buttonId: 'btn-new-samples' });
+        });
+        
+        document.getElementById('btn-regenerate-samples')?.addEventListener('click', async () => {
+            // Regenerate with fixed seed for reproducibility
+            await generateTileSamples({ seed: 42, buttonId: 'btn-regenerate-samples' });
+        });
     </script>
 </body>
 </html>

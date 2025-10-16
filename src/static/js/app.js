@@ -562,15 +562,8 @@ async function initializeApp() {
     const configRes = await fetch('/api/config');
     const config = await configRes.json();
     
-    // Try to detect which region matches the configured bbox
-    let detectedRegion = 'mainland'; // default
-    if (config.bbox) {
-      const [cfg_lon_min, cfg_lat_min, cfg_lon_max, cfg_lat_max] = config.bbox;
-      // Check if bbox matches California
-      if (cfg_lon_min < -100) { // Simple heuristic: California is west of -100
-        detectedRegion = 'california';
-      }
-    }
+    // Default to Portugal mainland
+    let detectedRegion = 'mainland';
     
     // Set the region selector to match
     document.querySelector('#regionSelect').value = detectedRegion;
@@ -588,7 +581,7 @@ async function initializeApp() {
     
     // Add helpful info
     setTimeout(() => {
-      updateStatus('Tip: Use the region selector to switch between Portugal and California', 'info');
+      updateStatus('Tip: Use the region selector to switch between different Portugal regions', 'info');
     }, 3000);
   } catch (error) {
     console.error('Error initializing app:', error);

@@ -63,7 +63,7 @@ class Sentinel2OpenEODownloader:
             logger.error("Sign up at: https://dataspace.copernicus.eu/")
             return False
     
-    def download_scene(
+    def download_scene_batch(
         self,
         bbox: List[float],
         start_date: str,
@@ -72,7 +72,7 @@ class Sentinel2OpenEODownloader:
         max_cloud_cover: Optional[float] = None
     ) -> Optional[Path]:
         """
-        Download Sentinel-2 scene using OpenEO.
+        Download Sentinel-2 scene using OpenEO batch jobs (for large areas).
         
         Args:
             bbox: Bounding box [lon_min, lat_min, lon_max, lat_max]
@@ -99,7 +99,7 @@ class Sentinel2OpenEODownloader:
         if max_cloud_cover is None:
             max_cloud_cover = self.config['sentinel2']['max_cloud_cover']
         
-        logger.info("Requesting Sentinel-2 data via OpenEO")
+        logger.info("Requesting Sentinel-2 data via OpenEO (Batch Job)")
         logger.info(f"  Bbox: {bbox}")
         logger.info(f"  Dates: {start_date} to {end_date}")
         logger.info(f"  Bands: {bands}")
@@ -122,42 +122,58 @@ class Sentinel2OpenEODownloader:
                 bands=bands
             )
             
-            logger.info("✓ Data loaded successfully from OpenEO")
+            logger.info("✓ Data cube created successfully")
             
             # Generate unique scene ID from parameters
-            scene_id = f"openeo_{start_date}_{end_date}".replace('-', '')
+            scene_id = f"openeo_batch_{start_date}_{end_date}".replace('-', '')
             scene_id += f"_{abs(int(bbox[0]*10))}_{abs(int(bbox[1]*10))}"
             
             scene_dir = self.raw_dir / start_date / scene_id
             scene_dir.mkdir(parents=True, exist_ok=True)
             
-            # Download each band separately as GeoTIFF
-            band_save_names = self.config['sentinel2'].get('band_save_names', bands)
+            # Create and execute batch job
+            logger.info("Creating batch job...")
+            job = cube.save_result(format="GTiff").create_job(
+                title=f"Sentinel-2 {start_date} to {end_date}",
+                description=f"Bbox: {bbox}, Bands: {bands}"
+            )
             
-            logger.info(f"Downloading {len(bands)} bands...")
-            for i, band in enumerate(bands):
-                save_name = band_save_names[i] if i < len(band_save_names) else band
-                output_path = scene_dir / f"{save_name}.tif"
-                
-                if output_path.exists():
-                    logger.info(f"  ✓ {save_name} already exists")
-                    continue
-                
-                logger.info(f"  Downloading {save_name} (band {band})...")
-                
-                # Select single band
-                band_cube = cube.band(band)
-                
-                # Save as GeoTIFF and download
-                band_cube.save_result(format="GTiff")
-                band_cube.download(str(output_path))
-                
-                logger.info(f"  ✓ Saved {save_name} to {output_path}")
+            logger.info(f"✓ Batch job created: {job.job_id}")
+            logger.info("Starting batch job and waiting for completion...")
+            logger.info("This may take several minutes. Progress updates will appear below.")
+            
+            # Start and wait with custom logging
+            job.start_and_wait(
+                print=lambda msg: logger.info(msg),
+                max_poll_interval=30  # Check status every ~30 seconds
+            )
+            
+            logger.info("✓ Batch job completed successfully")
+            logger.info("Downloading results...")
+            
+            # Download results
+            job.download_results(scene_dir)
+            
+            logger.info(f"✓ Downloaded results to {scene_dir}")
+            
+            # Rename files to match expected band names
+            band_save_names = self.config['sentinel2'].get('band_save_names', bands)
+            downloaded_files = list(scene_dir.glob("*.tif"))
+            
+            if len(downloaded_files) == len(bands):
+                for i, (band, save_name) in enumerate(zip(bands, band_save_names)):
+                    if i < len(downloaded_files):
+                        old_path = downloaded_files[i]
+                        new_path = scene_dir / f"{save_name}.tif"
+                        if old_path != new_path and not new_path.exists():
+                            old_path.rename(new_path)
+                            logger.info(f"  Renamed {old_path.name} → {save_name}.tif")
             
             # Save metadata
             metadata = {
                 "id": scene_id,
-                "source": "openeo",
+                "source": "openeo_batch",
+                "job_id": job.job_id,
                 "collection": "SENTINEL2_L2A",
                 "bbox": bbox,
                 "temporal_extent": [start_date, end_date],
@@ -175,7 +191,7 @@ class Sentinel2OpenEODownloader:
             return scene_dir
             
         except Exception as e:
-            logger.error(f"Error downloading via OpenEO: {e}")
+            logger.error(f"Error downloading via OpenEO batch job: {e}")
             logger.exception(e)
             return None
     
@@ -186,7 +202,7 @@ class Sentinel2OpenEODownloader:
         end_date: Optional[str] = None
     ):
         """
-        Main execution: authenticate and download scene.
+        Main execution: authenticate and download scene using batch jobs.
         
         Args:
             bbox: Bounding box override
@@ -206,8 +222,8 @@ class Sentinel2OpenEODownloader:
         if end_date is None:
             end_date = self.config['time_range']['end_date']
         
-        # Download scene
-        result = self.download_scene(bbox, start_date, end_date)
+        # Download scene using batch job (works for large areas)
+        result = self.download_scene_batch(bbox, start_date, end_date)
         
         if result:
             logger.info(f"✓ Download complete: {result}")

@@ -18,8 +18,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.mount("/static", StaticFiles(directory="src/static"), name="static")
     app.mount("/static/samples", StaticFiles(directory="data/samples"), name="samples")
+    app.mount("/static", StaticFiles(directory="src/static"), name="static")
 
     @app.get("/", include_in_schema=False)
     async def root():

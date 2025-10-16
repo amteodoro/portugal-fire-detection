@@ -148,10 +148,31 @@ class Sentinel2Downloader:
             Path to the scene directory, or None if failed
         """
         if bands is None:
+            # Download both training bands and RGB bands
             bands = self.config['sentinel2']['bands']
+            rgb_bands = self.config['sentinel2'].get('rgb_bands', [])
+            
+            # Combine and deduplicate (B04/red appears in both)
+            all_bands = list(bands)
+            for rgb_band in rgb_bands:
+                if rgb_band not in all_bands:
+                    all_bands.append(rgb_band)
+            bands = all_bands
         
-        # Get band save names if available (for backwards compatibility)
-        band_save_names = self.config['sentinel2'].get('band_save_names', bands)
+        # Get band save names mapping
+        band_save_names = self.config['sentinel2'].get('band_save_names', [])
+        rgb_save_names = self.config['sentinel2'].get('rgb_save_names', [])
+        
+        # Create combined save names mapping
+        save_names_map = {}
+        for i, band in enumerate(self.config['sentinel2']['bands']):
+            if i < len(band_save_names):
+                save_names_map[band] = band_save_names[i]
+        
+        rgb_bands_list = self.config['sentinel2'].get('rgb_bands', [])
+        for i, band in enumerate(rgb_bands_list):
+            if i < len(rgb_save_names):
+                save_names_map[band] = rgb_save_names[i]
         
         scene_id = scene['id']
         scene_date = scene['properties'].get('datetime', '').split('T')[0]
@@ -169,14 +190,14 @@ class Sentinel2Downloader:
         assets = scene.get('assets', {})
         download_tasks = []
         
-        for i, band in enumerate(bands):
+        for band in bands:
             if band.lower() in assets:
                 asset = assets[band.lower()]
                 asset_url = asset.get('href')
                 
                 if asset_url:
-                    # Use save name if provided, otherwise use original band name
-                    save_name = band_save_names[i] if i < len(band_save_names) else band
+                    # Use mapped save name if available, otherwise use band name
+                    save_name = save_names_map.get(band, band)
                     output_path = scene_dir / f"{save_name}.tif"
                     download_tasks.append(
                         self.download_band(asset_url, output_path, save_name)

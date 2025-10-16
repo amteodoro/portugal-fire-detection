@@ -168,12 +168,13 @@ def main():
     # Load config
     config = load_config()
     
-    processed_dir = Path(config['data']['processed_dir'])
+    # Use tiles_dir instead of processed_dir
+    tiles_dir = Path(config['data']['tiles_dir'])
     output_dir = Path(config['data']['processed_dir']) / "splits"
     
     # Collect tiles
-    print(f"\nCollecting tiles from {processed_dir}...")
-    tiles = collect_tiles(processed_dir)
+    print(f"\nCollecting tiles from {tiles_dir}...")
+    tiles = collect_tiles(tiles_dir)
     
     print(f"\nFound:")
     print(f"  Fire tiles: {len(tiles['fire'])}")

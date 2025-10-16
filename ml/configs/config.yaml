@@ -21,9 +21,13 @@ time_range:
 # Sentinel-2 settings
 sentinel2:
   collection: "sentinel-2-l2a"
+  # Training bands (for model)
   bands: ["red", "nir", "swir16", "swir22"]  # Red (B04), NIR (B08), SWIR1 (B11), SWIR2 (B12)
   band_names: ["red", "nir", "swir1", "swir2"]
   band_save_names: ["B04", "B08", "B11", "B12"]  # Saved as Bxx for compatibility
+  # RGB bands (for visualization context)
+  rgb_bands: ["blue", "green", "red"]  # B02, B03, B04
+  rgb_save_names: ["B02", "B03", "B04"]
   max_cloud_cover: 20
   resolution: 20  # meters (SWIR bands)
   
