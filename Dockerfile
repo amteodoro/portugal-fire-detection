@@ -18,14 +18,15 @@ ENV GDAL_CONFIG=/usr/bin/gdal-config
 
 # Install deps first to leverage Docker layer cache
 COPY pyproject.toml uv.lock* README.md ./
-RUN uv sync --frozen --no-dev || uv sync --no-dev
+RUN uv sync --frozen || uv sync
 
 # Ensure torch and ML dependencies are available in PATH
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Copy source
+# Copy source and tests
 COPY src ./src
 COPY ml ./ml
+COPY tests ./tests
 RUN mkdir -p /app/data
 
 EXPOSE 8000
