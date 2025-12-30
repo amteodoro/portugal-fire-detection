@@ -1,61 +1,40 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Training Dataset Summary</title>
-    <link rel="stylesheet" href="/static/css/styles.css"/>
+    <link rel="stylesheet" href="/static/css/styles.css" />
     <style>
         .container {
             max-width: 1400px;
             margin: 0 auto;
             padding: 2rem;
+            background: hsl(var(--background));
         }
 
         header {
             text-align: center;
-            margin-bottom: 2rem;
-            padding: 1.5rem;
+            margin-bottom: 3rem;
+            padding: 2rem 1.5rem;
         }
 
         h1 {
-            font-size: 2rem;
+            font-size: 2.25rem;
+            font-weight: 700;
             margin-bottom: 0.5rem;
-            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: hsl(var(--foreground));
+            letter-spacing: -0.05em;
         }
 
         .subtitle {
-            color: #6b7280;
+            color: hsl(var(--muted-foreground));
             font-size: 1rem;
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
         }
 
-        .refresh-btn {
-            padding: 0.75rem 1.5rem;
-            background: #3b82f6;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 1rem;
-            transition: all 0.3s;
-            width: auto;
-            display: inline-block;
-        }
 
-        .refresh-btn:hover {
-            background: #2563eb;
-            transform: translateY(-2px);
-        }
-
-        .refresh-btn:disabled {
-            background: #9ca3af;
-            cursor: not-allowed;
-            transform: none;
-        }
 
         .stats-grid {
             display: grid;
@@ -65,58 +44,57 @@
         }
 
         .stat-card {
-            background: #ffffff;
+            background: hsl(var(--card));
             padding: 1.5rem;
-            border-radius: 12px;
-            border: 1px solid #e5e7eb;
-            transition: all 0.3s;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
         }
 
         .stat-card:hover {
-            border-color: #3b82f6;
-            transform: translateY(-4px);
-            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.15);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
         }
 
-        .stat-icon {
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-        }
 
         .stat-value {
             font-size: 2.5rem;
-            font-weight: bold;
-            color: #3b82f6;
+            font-weight: 700;
+            color: hsl(var(--foreground));
             margin: 0.5rem 0;
+            letter-spacing: -0.05em;
         }
 
         .stat-label {
-            color: #6b7280;
-            font-size: 0.9rem;
+            color: hsl(var(--muted-foreground));
+            font-size: 0.75rem;
+            font-weight: 500;
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
 
         .stat-detail {
-            margin-top: 0.5rem;
-            padding-top: 0.5rem;
-            border-top: 1px solid #e5e7eb;
-            font-size: 0.9rem;
-            color: #4b5563;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid hsl(var(--border));
+            font-size: 0.875rem;
+            color: hsl(var(--muted-foreground));
         }
 
         .section {
-            background: #ffffff;
+            background: hsl(var(--card));
             padding: 2rem;
-            border-radius: 12px;
-            border: 1px solid #e5e7eb;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
             margin-bottom: 2rem;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
         }
 
         .section-title {
-            font-size: 1.5rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: -0.025em;
+            color: hsl(var(--foreground));
             margin-bottom: 1.5rem;
             display: flex;
             align-items: center;
@@ -130,25 +108,23 @@
         }
 
         .sample-card {
-            background: #ffffff;
-            border-radius: 8px;
+            background: hsl(var(--card));
+            border-radius: var(--radius);
             overflow: hidden;
-            border: 1px solid #e5e7eb;
-            transition: all 0.3s;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border: 1px solid hsl(var(--border));
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
         }
 
         .sample-card:hover {
-            border-color: #3b82f6;
-            transform: scale(1.02);
-            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.2);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
         }
 
         .sample-image {
             width: 100%;
             height: 250px;
             object-fit: cover;
-            background: #f3f4f6;
+            background: hsl(var(--muted));
         }
 
         .sample-info {
@@ -156,15 +132,16 @@
         }
 
         .sample-date {
-            color: #3b82f6;
+            color: hsl(var(--foreground));
             font-weight: 600;
+            font-size: 0.875rem;
             margin-bottom: 0.25rem;
         }
 
         .sample-id {
-            color: #64748b;
-            font-size: 0.85rem;
-            font-family: monospace;
+            color: hsl(var(--muted-foreground));
+            font-size: 0.8125rem;
+            font-family: 'Monaco', 'Courier New', monospace;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -173,21 +150,21 @@
         .status-badge {
             display: inline-block;
             padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
 
         .status-ready {
-            background: rgba(34, 197, 94, 0.2);
-            color: #22c55e;
+            background: hsl(240 5% 26% / 0.2);
+            color: hsl(240 5% 26%);
         }
 
         .status-not-ready {
-            background: rgba(239, 68, 68, 0.2);
-            color: #ef4444;
+            background: hsl(var(--muted));
+            color: hsl(var(--muted-foreground));
         }
 
         .splits-table {
@@ -200,68 +177,69 @@
         .splits-table td {
             padding: 0.75rem;
             text-align: left;
-            border-bottom: 1px solid #e5e7eb;
+            border-bottom: 1px solid hsl(var(--border));
         }
 
         .splits-table th {
-            color: #6b7280;
+            color: hsl(var(--muted-foreground));
             font-weight: 600;
-            font-size: 0.9rem;
-            background: #f9fafb;
+            font-size: 0.875rem;
+            background: hsl(var(--muted));
         }
 
         .splits-table tr:hover {
-            background: #f9fafb;
+            background: hsl(var(--muted) / 0.5);
         }
 
         .loading {
             text-align: center;
             padding: 4rem;
-            font-size: 1.2rem;
-            color: #6b7280;
+            font-size: 1rem;
+            color: hsl(var(--muted-foreground));
         }
 
         .error {
-            background: rgba(239, 68, 68, 0.1);
-            color: #ef4444;
+            background: hsl(var(--destructive) / 0.1);
+            color: hsl(var(--destructive));
             padding: 1rem;
-            border-radius: 8px;
-            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--destructive) / 0.3);
             margin: 2rem 0;
         }
 
         .progress-bar {
             width: 100%;
             height: 8px;
-            background: #e5e7eb;
-            border-radius: 4px;
+            background: hsl(var(--muted));
+            border-radius: var(--radius);
             overflow: hidden;
             margin-top: 0.5rem;
         }
 
         .progress-fill {
             height: 100%;
-            background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
+            background: hsl(var(--foreground));
             transition: width 0.3s;
         }
 
         .legend {
             margin-top: 1rem;
             padding: 1rem;
-            background: #eff6ff;
-            border-radius: 8px;
-            border-left: 3px solid #3b82f6;
+            background: hsl(var(--muted));
+            border-radius: var(--radius);
+            border-left: 2px solid hsl(var(--foreground));
         }
 
         .legend-title {
             font-weight: 600;
+            font-size: 0.875rem;
             margin-bottom: 0.5rem;
-            color: #3b82f6;
+            color: hsl(var(--foreground));
         }
 
         .legend-text {
-            font-size: 0.9rem;
-            color: #4b5563;
+            font-size: 0.875rem;
+            color: hsl(var(--muted-foreground));
             line-height: 1.6;
         }
 
@@ -272,48 +250,76 @@
         }
 
         .fetch-card {
-            background: #f9fafb;
+            display: flex;
+            flex-direction: column;
+            background: hsl(var(--muted));
             padding: 1.5rem;
-            border-radius: 8px;
-            border: 1px solid #e5e7eb;
+            border-radius: var(--radius);
+            border: 1px solid hsl(var(--border));
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+            transition: box-shadow 0.2s ease;
+        }
+
+        .fetch-card:hover {
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        .fetch-card form {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+
+        .fetch-card button[type="submit"] {
+            margin-top: 0;
+            width: 100%;
+        }
+
+        .fetch-card .fetch-note {
+            margin-top: auto;
+            margin-bottom: 0.5rem;
         }
 
         .fetch-card h3 {
             margin: 0 0 0.75rem 0;
-            color: #1f2937;
-            font-size: 1.1rem;
+            color: hsl(var(--foreground));
+            font-size: 1rem;
+            font-weight: 600;
+            letter-spacing: -0.025em;
         }
 
         .fetch-card p {
-            color: #6b7280;
-            font-size: 0.9rem;
+            color: hsl(var(--muted-foreground));
+            font-size: 0.875rem;
             margin-bottom: 1rem;
+            line-height: 1.5;
         }
 
         .fetch-command {
-            background: #1f2937;
+            background: hsl(var(--muted));
             padding: 1rem;
-            border-radius: 6px;
+            border-radius: var(--radius);
             margin: 1rem 0;
             overflow-x: auto;
+            border: 1px solid hsl(var(--border));
         }
 
         .fetch-command code {
-            color: #10b981;
+            color: hsl(var(--foreground));
             font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 0.85rem;
+            font-size: 0.8125rem;
             display: block;
             white-space: nowrap;
         }
 
         .fetch-note {
-            font-size: 0.85rem !important;
-            color: #9ca3af !important;
+            font-size: 0.75rem;
+            color: hsl(var(--muted-foreground));
             font-style: italic;
-            margin-top: 0.5rem !important;
         }
     </style>
 </head>
+
 <body>
     <nav class="navbar">
         <div class="navbar-brand">Portugal Fire Detection</div>
@@ -330,7 +336,7 @@
         <header>
             <h1>Training Dataset Summary</h1>
             <p class="subtitle">Sentinel-2 Imagery & FIRMS Fire Detection Data</p>
-            <button class="refresh-btn" onclick="refreshData()">🔄 Refresh Data</button>
+            <button onclick="refreshData()">Refresh Data</button>
         </header>
 
         <div id="loading" class="loading">
@@ -343,80 +349,100 @@
             <!-- Stats Overview -->
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-icon">📡</div>
                     <div class="stat-value" id="sentinel2-count">0</div>
                     <div class="stat-label">Sentinel-2 Scenes</div>
                     <div class="stat-detail" id="sentinel2-detail"></div>
                 </div>
 
                 <div class="stat-card">
-                    <div class="stat-icon">🔥</div>
+                    <div class="stat-value" id="sentinel3-count">0</div>
+                    <div class="stat-label">Sentinel-3 Scenes</div>
+                    <div class="stat-detail" id="sentinel3-detail"></div>
+                </div>
+
+                <div class="stat-card">
                     <div class="stat-value" id="fires-count">0</div>
                     <div class="stat-label">Fire Detections</div>
                     <div class="stat-detail" id="fires-detail"></div>
                 </div>
 
                 <div class="stat-card">
-                    <div class="stat-icon">🎯</div>
                     <div class="stat-value" id="tiles-count">0</div>
                     <div class="stat-label">Training Tiles</div>
                     <div class="stat-detail" id="tiles-detail"></div>
                 </div>
 
                 <div class="stat-card">
-                    <div class="stat-icon">✅</div>
                     <div class="stat-value" id="status-badge"></div>
                     <div class="stat-label">Training Status</div>
                     <div class="stat-detail" id="status-detail"></div>
                 </div>
             </div>
 
-            <!-- Data Fetching -->  
+            <!-- Data Fetching -->
             <div class="section">
-                <h2 class="section-title">Fetch More Training Data</h2>
-                <p style="color: #6b7280; margin-bottom: 1.5rem;">
-                    To improve model performance, download more Sentinel-2 imagery and FIRMS fire detection data.
-                </p>
-                
+                <h2 class="section-title">Fetch Training Data</h2>
+
+                <!-- Global Date Range Picker -->
+                <div
+                    style="background: linear-gradient(135deg, hsl(var(--muted)) 0%, hsl(var(--card)) 100%); padding: 1.5rem; border-radius: var(--radius); margin-bottom: 1.5rem; border: 1px solid hsl(var(--border));">
+                    <h3 style="margin: 0 0 1rem 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+                        Date Range
+                        <span
+                            style="font-size: 0.75rem; font-weight: normal; color: hsl(var(--muted-foreground));">(applies
+                            to all data sources)</span>
+                    </h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 1rem; align-items: end;">
+                        <label style="display: block;">
+                            <span style="font-size: 0.875rem; font-weight: 500; color: hsl(var(--foreground));">Start
+                                Date</span>
+                            <input type="date" id="global-start-date" required
+                                style="width: 100%; padding: 0.75rem; margin-top: 0.25rem; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--background)); font-size: 1rem;">
+                        </label>
+                        <label style="display: block;">
+                            <span style="font-size: 0.875rem; font-weight: 500; color: hsl(var(--foreground));">End
+                                Date</span>
+                            <input type="date" id="global-end-date" required
+                                style="width: 100%; padding: 0.75rem; margin-top: 0.25rem; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--background)); font-size: 1rem;">
+                        </label>
+                        <button type="button" id="fetch-all-btn"
+                            style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, hsl(240 5% 26%) 0%, hsl(240 5% 20%) 100%); color: white; border: none; border-radius: var(--radius); font-weight: 600; cursor: pointer; white-space: nowrap;">
+                            Fetch All Sources
+                        </button>
+                    </div>
+                    <p style="margin: 0.75rem 0 0 0; font-size: 0.8rem; color: hsl(var(--muted-foreground));">
+                        Tip: <strong>Tip:</strong> For fire season data, use July-September dates. Fire detection works
+                        best with matching imagery and FIRMS data.
+                    </p>
+                </div>
+
                 <div class="data-fetch-grid">
+                    <!-- Sentinel-2 Card -->
                     <div class="fetch-card">
                         <h3>Sentinel-2 Imagery</h3>
-                        <p>Download satellite imagery covering fire events.</p>
-                        <form id="sentinel2-form" style="margin-top: 1rem;">
-                            <label style="display: block; margin-bottom: 0.5rem;">
-                                <strong>Start Date:</strong>
-                                <input type="date" id="s2-start" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
-                            </label>
-                            <label style="display: block; margin-bottom: 0.5rem;">
-                                <strong>End Date:</strong>
-                                <input type="date" id="s2-end" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
-                            </label>
+                        <p>High-resolution optical imagery (10-20m) for fire and burn scar detection.</p>
+                        <form id="sentinel2-form">
                             <label style="display: block; margin-bottom: 0.5rem;">
                                 <strong>Max Cloud Cover (%):</strong>
-                                <input type="number" id="s2-cloud" min="0" max="100" value="20" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                                <input type="number" id="s2-cloud" min="0" max="100" value="20"
+                                    style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
                             </label>
                             <label style="display: block; margin-bottom: 0.5rem;">
                                 <strong>Max Scenes (optional):</strong>
-                                <input type="number" id="s2-max-scenes" min="1" placeholder="All scenes" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                                <input type="number" id="s2-max-scenes" min="1" placeholder="All scenes"
+                                    style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
                             </label>
-                            <button type="submit" class="refresh-btn" style="width: 100%; margin-top: 0.5rem;">Download Sentinel-2</button>
+                            <p class="fetch-note">Downloads from AWS Earth Search STAC catalog</p>
+                            <button type="submit">Download Sentinel-2</button>
                             <div id="s2-status" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
                         </form>
-                        <p class="fetch-note" style="margin-top: 0.5rem;">Downloads Sentinel-2 L2A scenes from STAC catalog</p>
                     </div>
-                    
+
+                    <!-- FIRMS Card -->
                     <div class="fetch-card">
-                        <h3>Historical FIRMS Data</h3>
-                        <p>Download historical fire detections beyond 10-day limit. Requires API key.</p>
-                        <form id="firms-form" style="margin-top: 1rem;">
-                            <label style="display: block; margin-bottom: 0.5rem;">
-                                <strong>Start Date: <span style="color: red;">*</span></strong>
-                                <input type="date" id="firms-start" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
-                            </label>
-                            <label style="display: block; margin-bottom: 0.5rem;">
-                                <strong>End Date: <span style="color: red;">*</span></strong>
-                                <input type="date" id="firms-end" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
-                            </label>
+                        <h3>FIRMS Fire Data</h3>
+                        <p>NASA fire detections from VIIRS and MODIS satellites.</p>
+                        <form id="firms-form">
                             <div style="display: block; margin-bottom: 0.5rem;">
                                 <strong>Products:</strong>
                                 <label style="display: inline-block; margin-right: 1rem; margin-top: 0.25rem;">
@@ -428,67 +454,184 @@
                             </div>
                             <label style="display: block; margin-bottom: 0.5rem;">
                                 <strong>Region Name (optional):</strong>
-                                <input type="text" id="firms-region" placeholder="e.g., portugal_summer_2024" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                                <input type="text" id="firms-region" placeholder="e.g., portugal_summer_2025"
+                                    style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
                             </label>
-                            <button type="submit" class="refresh-btn" style="width: 100%; margin-top: 0.5rem;">Fetch FIRMS Data</button>
+                            <p class="fetch-note">Fetches from NASA FIRMS archive (Standard Processing for older dates)
+                            </p>
+                            <button type="submit">Fetch FIRMS Data</button>
                             <div id="firms-status" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
                         </form>
-                        <p class="fetch-note" style="margin-top: 0.5rem;">Fetches historical fire data from NASA FIRMS archive</p>
                     </div>
-                    
+
+                    <!-- Sentinel-3 Card -->
+                    <div class="fetch-card">
+                        <h3>Sentinel-3 Thermal</h3>
+                        <p>Thermal IR data for active fire detection and Fire Radiative Power.</p>
+                        <form id="sentinel3-form">
+                            <div style="display: block; margin-bottom: 0.5rem;">
+                                <strong>Instruments:</strong>
+                                <label style="display: inline-block; margin-right: 1rem; margin-top: 0.25rem;">
+                                    <input type="checkbox" id="s3-slstr" checked> SLSTR (Thermal)
+                                </label>
+                                <label style="display: inline-block;">
+                                    <input type="checkbox" id="s3-olci"> OLCI (Optical)
+                                </label>
+                            </div>
+                            <label style="display: block; margin-bottom: 0.5rem;">
+                                <strong>Max Scenes (optional):</strong>
+                                <input type="number" id="s3-max-scenes" min="1" placeholder="All scenes"
+                                    style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                            </label>
+                            <p class="fetch-note">Downloads from Copernicus Data Space (requires OAuth)</p>
+                            <button type="submit">Download Sentinel-3</button>
+                            <div id="s3-status" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
+                        </form>
+                    </div>
+
                     <div class="fetch-card">
                         <h3>OpenEO Download</h3>
-                        <p style="background: #fef3c7; padding: 0.75rem; border-radius: 6px; border-left: 3px solid #f59e0b; margin-bottom: 0.5rem;">
-                            <strong style="color: #d97706;">⚠️ NOT RECOMMENDED for Portugal</strong><br>
-                            <span style="font-size: 0.85rem; color: #92400e;">OpenEO batch jobs run out of memory for large areas. Use <strong>Sentinel-2 Imagery</strong> card instead for Portugal.</span>
+                        <p
+                            style="background: hsl(var(--muted)); padding: 0.75rem; border-radius: var(--radius); border-left: 2px solid hsl(var(--destructive)); margin-bottom: 0.5rem;">
+                            <strong style="color: hsl(var(--destructive));">NOT RECOMMENDED for Portugal</strong><br>
+                            <span style="font-size: 0.8125rem; color: hsl(var(--muted-foreground));">OpenEO batch jobs
+                                run out of memory for large areas. Use <strong>Sentinel-2 Imagery</strong> card instead
+                                for Portugal.</span>
                         </p>
                         <p>Only use for small test regions (&lt;100km x 100km). Requires Copernicus account.</p>
-                        <form id="openeo-form" style="margin-top: 1rem;">
+                        <form id="openeo-form">
                             <label style="display: block; margin-bottom: 0.5rem;">
                                 <strong>Start Date:</strong>
-                                <input type="date" id="openeo-start" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                                <input type="date" id="openeo-start" required
+                                    style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
                             </label>
                             <label style="display: block; margin-bottom: 0.5rem;">
                                 <strong>End Date:</strong>
-                                <input type="date" id="openeo-end" required style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                                <input type="date" id="openeo-end" required
+                                    style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
                             </label>
                             <label style="display: block; margin-bottom: 0.5rem;">
                                 <strong>Max Cloud Cover (%):</strong>
-                                <input type="number" id="openeo-cloud" min="0" max="100" value="20" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
+                                <input type="number" id="openeo-cloud" min="0" max="100" value="20"
+                                    style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid #e5e7eb; border-radius: 4px;">
                             </label>
-                            <div style="background: #eff6ff; padding: 0.75rem; border-radius: 6px; margin: 0.5rem 0; border-left: 3px solid #3b82f6;">
-                                <p style="font-size: 0.85rem; color: #4b5563; margin: 0;"><strong>ℹ️ Note:</strong> Uses asynchronous batch jobs. Can process entire Portugal. Job will run on OpenEO servers and may take several minutes.</p>
+                            <div
+                                style="background: hsl(var(--muted)); padding: 0.75rem; border-radius: var(--radius); margin: 0.5rem 0; border-left: 2px solid hsl(var(--foreground));">
+                                <p style="font-size: 0.8125rem; color: hsl(var(--muted-foreground)); margin: 0;">
+                                    <strong>Note:</strong> Uses asynchronous batch jobs. Can process entire Portugal.
+                                    Job will run on OpenEO servers and may take several minutes.
+                                </p>
                             </div>
-                            <button type="submit" class="refresh-btn" style="width: 100%; margin-top: 0.5rem;">Download via OpenEO</button>
+                            <p class="fetch-note">Uses batch jobs for reliable large-area downloads. Progress updates
+                                every ~10 seconds.</p>
+                            <button type="submit">Download via OpenEO</button>
                             <div id="openeo-status" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
                         </form>
-                        <p class="fetch-note" style="margin-top: 0.5rem;">Uses batch jobs for reliable large-area downloads. Progress updates every ~10 seconds.</p>
                     </div>
-                    
+
                     <div class="fetch-card">
                         <h3>Prepare Training Dataset</h3>
-                        <p>Process Sentinel-2 and FIRMS data into training-ready tiles and splits.</p>
-                        <form id="splits-form" style="margin-top: 1rem;">
-                            <div style="background: #eff6ff; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem; border-left: 3px solid #3b82f6;">
-                                <p style="font-size: 0.85rem; color: #4b5563; margin: 0;"><strong>ℹ️ Automated 3-Step Pipeline:</strong></p>
-                                <ol style="font-size: 0.8rem; color: #4b5563; margin: 0.5rem 0 0 1.2rem; padding: 0;">
-                                    <li>Matches FIRMS fires to Sentinel-2 scenes</li>
+                        <p>Process Sentinel-2/3 and FIRMS data into training-ready tiles and splits.</p>
+                        <form id="splits-form">
+                            <div
+                                style="background: hsl(var(--muted)); padding: 0.75rem; border-radius: var(--radius); margin-bottom: 0.75rem; border-left: 2px solid hsl(var(--foreground));">
+                                <p style="font-size: 0.8125rem; color: hsl(var(--muted-foreground)); margin: 0;">
+                                    <strong>Automated 4-Step Pipeline:</strong>
+                                </p>
+                                <ol
+                                    style="font-size: 0.75rem; color: hsl(var(--muted-foreground)); margin: 0.5rem 0 0 1.2rem; padding: 0;">
+                                    <li>Matches FIRMS fires to S2 and S3 scenes</li>
                                     <li>Extracts tiles from matched pairs</li>
                                     <li>Creates train/val/test splits</li>
+                                    <li>Generates co-located S2+S3 pairs</li>
                                 </ol>
                             </div>
-                            <p style="color: #6b7280; font-size: 0.85rem; margin-bottom: 1rem;">Requires Sentinel-2 imagery and FIRMS data to be downloaded first.</p>
-                            <button type="submit" class="refresh-btn" style="width: 100%;">Prepare Training Dataset</button>
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label for="tile-size">Tile Size (pixels):</label>
+                                <select id="tile-size" name="tile_size" style="width: 100%; padding: 0.5rem;">
+                                    <option value="64">64x64 (small, better S3 coverage)</option>
+                                    <option value="128" selected>128x128 (recommended)</option>
+                                    <option value="256">256x256 (larger, may have S3 edge issues)</option>
+                                </select>
+                                <p
+                                    style="color: hsl(var(--muted-foreground)); font-size: 0.75rem; margin: 0.25rem 0 0 0;">
+                                    Smaller tiles work better with Sentinel-3 edge coverage. Same size used for
+                                    co-located visualizations.</p>
+                            </div>
+                            <p style="color: hsl(var(--muted-foreground)); font-size: 0.85rem; margin-bottom: 1rem;">
+                                Requires Sentinel-2, Sentinel-3, and FIRMS data to be downloaded first.</p>
+                            <p class="fetch-note">Uses config from ml/configs/config.yaml for split ratios</p>
+                            <button type="submit">Prepare Training Dataset</button>
                             <div id="splits-status" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
                         </form>
-                        <p class="fetch-note" style="margin-top: 0.5rem;">Uses config from ml/configs/config.yaml for split ratios</p>
+                    </div>
+
+                    <div class="fetch-card">
+                        <h3>Train Model</h3>
+                        <p>Start model training with prepared dataset.</p>
+                        <form id="training-form">
+                            <div
+                                style="background: hsl(var(--muted)); padding: 0.75rem; border-radius: var(--radius); margin-bottom: 0.75rem; border-left: 2px solid hsl(var(--destructive));">
+                                <p style="font-size: 0.8125rem; color: hsl(var(--muted-foreground)); margin: 0;">
+                                    <strong>Long Running Process:</strong>
+                                </p>
+                                <p
+                                    style="font-size: 0.75rem; color: hsl(var(--muted-foreground)); margin: 0.25rem 0 0 0;">
+                                    Training can take hours depending on dataset size and hardware. Keep this page open
+                                    to monitor progress.</p>
+                            </div>
+                            <p style="color: hsl(var(--muted-foreground)); font-size: 0.85rem; margin-bottom: 1rem;">
+                                Requires prepared training tiles and splits.</p>
+                            <p class="fetch-note">Uses config from ml/configs/config.yaml for training parameters</p>
+                            <button type="submit">Start Training</button>
+                            <div id="training-status" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cache Management Section -->
+            <div class="section">
+                <h2 class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Cache Management</span>
+                    <span>
+                        <button id="btn-toggle-cache" onclick="toggleCacheStats()"
+                            style="width: auto; margin-right: 0.5rem;">Show Cache Stats</button>
+                        <button id="btn-refresh-cache" onclick="loadCacheStats()"
+                            style="width: auto; display: none;">Refresh</button>
+                    </span>
+                </h2>
+
+                <!-- Collapsible Cache Content -->
+                <div id="cache-content" style="display: none;">
+                    <div class="legend">
+                        <div class="legend-title">Manage Cached Data</div>
+                        <div class="legend-text">
+                            <strong>Warning:</strong> Deleting cached data will remove downloaded files and processed
+                            datasets.<br>
+                            <strong>Safe to delete:</strong> All items can be re-downloaded/regenerated, but may take
+                            time.<br>
+                            <em>You will be shown a confirmation dialog before any deletion occurs.</em>
+                        </div>
+                    </div>
+
+                    <!-- Cache Stats Loading Area -->
+                    <div id="cache-stats-container" style="margin-bottom: 2rem;">
+                        <div style="text-align: center; padding: 2rem; color: hsl(var(--muted-foreground));">
+                            Loading cache statistics...
+                        </div>
+                    </div>
+
+                    <!-- Cache Items Grid -->
+                    <div id="cache-items-grid" class="fetch-grid" style="display: none;">
+                        <!-- Will be populated by JavaScript -->
                     </div>
                 </div>
             </div>
 
             <!-- Training Splits -->
             <div class="section" id="splits-section" style="display: none;">
-                <h2 class="section-title">📊 Training Data Splits</h2>
+                <h2 class="section-title">Training Data Splits</h2>
                 <table class="splits-table">
                     <thead>
                         <tr>
@@ -503,30 +646,190 @@
                 </table>
             </div>
 
-            <!-- Training Tile Samples -->
+            <!-- Training Tile Samples - Carousel View -->
             <div class="section">
                 <h2 class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
-                    <span>🎯 Training Tile Samples</span>
+                    <span>Training Tile Samples</span>
                     <span>
-                        <button id="btn-new-samples" class="refresh-btn" style="margin-right:0.5rem;">🎲 New Sample Set</button>
-                        <button id="btn-regenerate-samples" class="refresh-btn" style="background:#10b981;">🎨 Regenerate Previews</button>
+                        <button id="btn-new-samples" style="margin-right:0.5rem; width: auto;">New Sample Set</button>
+                        <button id="btn-regenerate-samples" style="width: auto;">Regenerate Previews</button>
                     </span>
                 </h2>
                 <div class="legend">
                     <div class="legend-title">Quality Check: Fire Detection Tiles</div>
                     <div class="legend-text">
-                        <strong>What you're seeing:</strong> Sample 256x256 pixel tiles extracted for model training.<br>
-                        <strong>Fire tiles:</strong> Red crosshair marks the FIRMS fire detection center<br>
-                        <strong>False Color (SWIR2-NIR-Red):</strong> Active fires appear as bright red/white spots<br>
-                        <em>Verify that fire tiles show actual hotspots and no-fire tiles look normal</em>
+                        <strong>What you're seeing:</strong> Sample 256x256 pixel tiles extracted for model
+                        training.<br>
+                        <strong>Panels:</strong> Top-left (False Color), Top-right (NIR), Bottom-left (SWIR2/Thermal),
+                        Bottom-right (SWIR1)<br>
+                        <strong>Fire tiles:</strong> Red circle marks the FIRMS fire detection center<br>
+                        <em>Use arrows to navigate between samples</em>
                     </div>
                 </div>
-                <div class="samples-grid" id="tile-samples-grid"></div>
+
+                <!-- Carousel Container -->
+                <div id="tile-carousel-container" style="display: none;">
+                    <!-- Sample Display -->
+                    <div
+                        style="position: relative; background: hsl(var(--muted)); border-radius: var(--radius); padding: 2rem; margin-bottom: 1.5rem;">
+                        <!-- Navigation Buttons -->
+                        <button id="carousel-prev"
+                            style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; background: hsl(var(--card)); border: 2px solid hsl(var(--border)); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                            ‹
+                        </button>
+                        <button id="carousel-next"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; background: hsl(var(--card)); border: 2px solid hsl(var(--border)); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                            ›
+                        </button>
+
+                        <!-- Sample Image -->
+                        <div style="text-align: center; padding: 0 4rem;">
+                            <div id="carousel-label"
+                                style="font-size: 1.5rem; font-weight: bold; margin-bottom: 1rem; color: hsl(var(--foreground));">
+                            </div>
+                            <img id="carousel-image" src="" alt="Tile Sample"
+                                style="max-width: 100%; height: auto; border-radius: var(--radius); border: 2px solid hsl(var(--border)); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                        </div>
+                    </div>
+
+                    <!-- Pagination Dots -->
+                    <div id="carousel-pagination"
+                        style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;">
+                    </div>
+
+                    <!-- Sample Counter -->
+                    <div
+                        style="text-align: center; margin-top: 1rem; color: hsl(var(--muted-foreground)); font-size: 0.9rem;">
+                        <span id="carousel-counter"></span>
+                    </div>
+                </div>
+
+                <!-- Loading/Empty State -->
+                <div id="tile-samples-placeholder"
+                    style="text-align: center; padding: 3rem; color: hsl(var(--muted-foreground));">
+                    <p>No tile samples available. Click "Regenerate Previews" to generate visualizations.</p>
+                </div>
+            </div>
+
+            <!-- Dual-Satellite Fire View -->
+            <div class="section">
+                <h2 class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Dual-Satellite Fire View</span>
+                    <span>
+                        <button id="btn-new-dual" style="margin-right:0.5rem; width: auto;">New Samples</button>
+                        <button id="btn-regenerate-dual" style="width: auto;">Generate Dual View</button>
+                    </span>
+                </h2>
+                <div class="legend">
+                    <div class="legend-title">Same Fire, Two Satellites</div>
+                    <div class="legend-text">
+                        <strong>Purpose:</strong> Shows the same FIRMS fire detection from both Sentinel-2 (optical) and
+                        Sentinel-3 (thermal).<br>
+                        <strong>Row 1:</strong> Sentinel-2 bands (Red, NIR, SWIR1, SWIR2)<br>
+                        <strong>Row 2:</strong> Sentinel-3 thermal bands (F1, F2, F1-F2 anomaly, composite)<br>
+                        <strong>Row 3:</strong> Composites and location map
+                    </div>
+                </div>
+
+                <!-- Dual Carousel Container -->
+                <div id="dual-carousel-container" style="display: none;">
+                    <div
+                        style="position: relative; background: hsl(var(--muted)); border-radius: var(--radius); padding: 2rem; margin-bottom: 1.5rem;">
+                        <button id="dual-carousel-prev"
+                            style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; background: hsl(var(--card)); border: 2px solid hsl(var(--border)); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 10;">
+                            ‹
+                        </button>
+                        <button id="dual-carousel-next"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; background: hsl(var(--card)); border: 2px solid hsl(var(--border)); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 10;">
+                            ›
+                        </button>
+                        <div style="text-align: center; padding: 0 4rem;">
+                            <div id="dual-carousel-label"
+                                style="font-size: 1.25rem; font-weight: bold; margin-bottom: 1rem; color: hsl(var(--foreground));">
+                            </div>
+                            <img id="dual-carousel-image" src="" alt="Dual Satellite Sample"
+                                style="max-width: 100%; height: auto; border-radius: var(--radius); border: 2px solid hsl(var(--border));">
+                        </div>
+                    </div>
+                    <div id="dual-carousel-pagination"
+                        style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;"></div>
+                    <div
+                        style="text-align: center; margin-top: 1rem; color: hsl(var(--muted-foreground)); font-size: 0.9rem;">
+                        <span id="dual-carousel-counter"></span>
+                    </div>
+                </div>
+
+                <div id="dual-samples-placeholder"
+                    style="text-align: center; padding: 3rem; color: hsl(var(--muted-foreground));">
+                    <p>No dual-satellite samples available. Click "Generate Dual View" to create them.</p>
+                </div>
+            </div>
+
+            <!-- Co-Located Pairs View (Corrected Pipeline) -->
+            <div class="section">
+                <h2 class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Co-Located S2+S3 View</span>
+                    <span>
+                        <button id="btn-generate-pairs" style="margin-right:0.5rem; width: auto;">1. Generate
+                            Pairs</button>
+                        <button id="btn-generate-colocated-viz" style="margin-right:0.5rem; width: auto;">2.
+                            Visualize</button>
+                        <button id="btn-refresh-colocated" style="width: auto;">Refresh</button>
+                    </span>
+                </h2>
+                <div class="legend">
+                    <div class="legend-title">Same Location, Both Satellites</div>
+                    <div class="legend-text">
+                        <strong>Purpose:</strong> Shows S2 (optical) and S3 (thermal) data for the EXACT same geographic
+                        location.<br>
+                        <strong>Step 1:</strong> Generate co-located pairs (extracts tiles from both satellites at
+                        identical coordinates)<br>
+                        <strong>Step 2:</strong> Create visualizations showing both datasets side-by-side<br>
+                        <strong>Fire marker:</strong> Shown at the exact location where FIRMS detected fire (Portugal
+                        only)
+                    </div>
+                </div>
+
+                <div id="colocated-status"
+                    style="margin-bottom: 1rem; padding: 0.75rem; background: hsl(var(--muted)); border-radius: var(--radius); display: none;">
+                </div>
+
+                <div id="colocated-carousel-container" style="display: none;">
+                    <div
+                        style="position: relative; background: hsl(var(--muted)); border-radius: var(--radius); padding: 2rem; margin-bottom: 1.5rem;">
+                        <button id="colocated-carousel-prev"
+                            style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; background: hsl(var(--card)); border: 2px solid hsl(var(--border)); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 10;">
+                            ‹
+                        </button>
+                        <button id="colocated-carousel-next"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; background: hsl(var(--card)); border: 2px solid hsl(var(--border)); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 10;">
+                            ›
+                        </button>
+                        <div style="text-align: center; padding: 0 4rem;">
+                            <div id="colocated-carousel-label"
+                                style="font-size: 1.25rem; font-weight: bold; margin-bottom: 1rem; color: hsl(var(--foreground));">
+                            </div>
+                            <img id="colocated-carousel-image" src="" alt="Co-Located Sample"
+                                style="max-width: 100%; height: auto; border-radius: var(--radius); border: 2px solid hsl(var(--border));">
+                        </div>
+                    </div>
+                    <div id="colocated-carousel-pagination"
+                        style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem;"></div>
+                    <div
+                        style="text-align: center; margin-top: 1rem; color: hsl(var(--muted-foreground)); font-size: 0.9rem;">
+                        <span id="colocated-carousel-counter"></span>
+                    </div>
+                </div>
+
+                <div id="colocated-samples-placeholder"
+                    style="text-align: center; padding: 3rem; color: hsl(var(--muted-foreground));">
+                    <p>No co-located samples. Click "1. Generate Pairs" first, then "2. Visualize".</p>
+                </div>
             </div>
 
             <!-- False Color Samples -->
             <div class="section">
-                <h2 class="section-title">🖼️ Scene False Color Samples</h2>
+                <h2 class="section-title">Scene False Color Samples</h2>
                 <div class="legend">
                     <div class="legend-title">False Color Composite (SWIR2-NIR-Red)</div>
                     <div class="legend-text">
@@ -546,10 +849,10 @@
             try {
                 const response = await fetch('/api/dataset/summary');
                 if (!response.ok) throw new Error('Failed to load summary');
-                
+
                 const data = await response.json();
                 displaySummary(data);
-                
+
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('content').style.display = 'block';
             } catch (error) {
@@ -564,20 +867,26 @@
         function displaySummary(data) {
             // Sentinel-2 stats
             document.getElementById('sentinel2-count').textContent = data.sentinel2.total_scenes;
-            document.getElementById('sentinel2-detail').innerHTML = 
+            document.getElementById('sentinel2-detail').innerHTML =
                 `${data.sentinel2.unique_dates} unique dates<br>` +
                 `${data.sentinel2.date_range.start || 'N/A'} to ${data.sentinel2.date_range.end || 'N/A'}`;
 
+            // Sentinel-3 stats
+            document.getElementById('sentinel3-count').textContent = data.sentinel3.total_scenes;
+            document.getElementById('sentinel3-detail').innerHTML =
+                `${data.sentinel3.slstr_scenes} SLSTR (thermal/fire)<br>` +
+                `${data.sentinel3.olci_scenes} OLCI (optical/burn)`;
+
             // FIRMS stats
             document.getElementById('fires-count').textContent = data.firms.total_fire_detections.toLocaleString();
-            const regionsText = data.firms.regions.map(r => 
+            const regionsText = data.firms.regions.map(r =>
                 `${r.name}: ${r.total_fires.toLocaleString()}`
             ).join('<br>');
             document.getElementById('fires-detail').innerHTML = regionsText || 'No regions';
 
             // Training tiles
             document.getElementById('tiles-count').textContent = data.processed.total_tiles.toLocaleString();
-            document.getElementById('tiles-detail').innerHTML = 
+            document.getElementById('tiles-detail').innerHTML =
                 `${data.processed.fire_tiles} fire tiles (${(data.processed.fire_ratio * 100).toFixed(1)}%)<br>` +
                 `${data.processed.no_fire_tiles} no-fire tiles`;
 
@@ -586,8 +895,8 @@
             const statusBadge = document.getElementById('status-badge');
             statusBadge.className = 'status-badge ' + (ready ? 'status-ready' : 'status-not-ready');
             statusBadge.textContent = ready ? 'Ready' : 'Not Ready';
-            
-            document.getElementById('status-detail').innerHTML = ready 
+
+            document.getElementById('status-detail').innerHTML = ready
                 ? 'All data prepared for model training'
                 : 'Need to prepare training splits';
 
@@ -638,135 +947,233 @@
                     samplesGrid.appendChild(card);
                 });
             } else {
-                samplesGrid.innerHTML = '<p style="color: #64748b;">No sample images available. Generate them by running the summary script.</p>';
+                samplesGrid.innerHTML = '<p style="color: hsl(var(--muted-foreground));">No sample images available. Generate them by running the summary script.</p>';
             }
         }
 
         async function refreshData() {
-            const btn = document.querySelector('.refresh-btn');
+            const btn = document.querySelector('header button');
             btn.disabled = true;
-            btn.textContent = '⏳ Refreshing...';
+            btn.textContent = 'Refreshing...';
 
             try {
                 const response = await fetch('/api/dataset/summary/refresh', { method: 'POST' });
                 if (!response.ok) throw new Error('Failed to refresh');
-                
+
                 const data = await response.json();
                 displaySummary(data);
-                
-                btn.textContent = '✓ Refreshed!';
+
+                btn.textContent = 'Refreshed!';
                 setTimeout(() => {
-                    btn.textContent = '🔄 Refresh Data';
+                    btn.textContent = 'Refresh Data';
                     btn.disabled = false;
                 }, 2000);
             } catch (error) {
                 console.error('Error refreshing:', error);
-                btn.textContent = '✗ Error';
+                btn.textContent = 'Error';
                 setTimeout(() => {
-                    btn.textContent = '🔄 Refresh Data';
+                    btn.textContent = 'Refresh Data';
                     btn.disabled = false;
                 }, 2000);
             }
         }
 
-        // Function to load tile samples
+        // Carousel state
+        let carouselSamples = [];
+        let currentCarouselIndex = 0;
+
+        // Function to load tile samples and setup carousel
         async function loadTileSamples() {
             try {
                 const response = await fetch('/api/dataset/tile-samples');
                 if (!response.ok) throw new Error('Failed to load tile samples');
-                
+
                 const data = await response.json();
-                const grid = document.getElementById('tile-samples-grid');
-                
+                const container = document.getElementById('tile-carousel-container');
+                const placeholder = document.getElementById('tile-samples-placeholder');
+
                 if (!data.samples || data.samples.length === 0) {
+                    container.style.display = 'none';
+                    placeholder.style.display = 'block';
+
                     // Check if we can generate samples from existing tiles
                     if (data.can_generate) {
-                        grid.innerHTML = `
+                        placeholder.innerHTML = `
                             <div style="text-align: center; padding: 2rem;">
-                                <p style="color: #64748b; margin-bottom: 1rem;">Tiles exist but visualizations need to be generated.</p>
-                                <button id="generate-samples-btn" class="refresh-btn" onclick="generateTileSamples()">
-                                    🎨 Generate Tile Previews
+                                <p style="color: hsl(var(--muted-foreground)); margin-bottom: 1rem;">Tiles exist but visualizations need to be generated.</p>
+                                <button id="generate-samples-btn" onclick="generateTileSamples()">
+                                    Generate Tile Previews
                                 </button>
                             </div>
                         `;
                     } else {
-                        grid.innerHTML = '<p style="color: #64748b;">No training tiles available. Run "Prepare Training Dataset" first.</p>';
+                        placeholder.innerHTML = '<p>No training tiles available. Run "Prepare Training Dataset" first.</p>';
                     }
                     return;
                 }
-                
-                grid.innerHTML = '';
-                
+
+                // Hide placeholder, show carousel
+                placeholder.style.display = 'none';
+                container.style.display = 'block';
+
                 // Sort samples: fire first, then no-fire
-                const sortedSamples = [...data.samples].sort((a, b) => {
+                carouselSamples = [...data.samples].sort((a, b) => {
                     if (a.type === 'fire' && b.type !== 'fire') return -1;
                     if (a.type !== 'fire' && b.type === 'fire') return 1;
                     return 0;
                 });
-                
+
+                // Add base path to samples
                 const cacheBust = `?t=${Date.now()}`;
-                sortedSamples.forEach(sample => {
-                    const card = document.createElement('div');
-                    card.className = 'sample-card';
-                    const imageUrl = `${data.base_path}/${sample.filename}${cacheBust}`;
-                    const label = sample.type === 'fire' ? 'FIRE DETECTION' : 'NO FIRE';
-                    const labelColor = sample.type === 'fire' ? '#ef4444' : '#22c55e';
-                    
-                    card.innerHTML = `
-                        <img src="${imageUrl}" alt="${label}" class="sample-image">
-                        <div class="sample-info">
-                            <div class="sample-date" style="color: ${labelColor}; font-weight: bold;">${label}</div>
-                        </div>
-                    `;
-                    grid.appendChild(card);
+                carouselSamples.forEach(sample => {
+                    sample.imageUrl = `${data.base_path}/${sample.filename}${cacheBust}`;
                 });
+
+                // Setup carousel
+                currentCarouselIndex = 0;
+                setupCarousel();
+                updateCarousel();
+
             } catch (error) {
                 console.error('Error loading tile samples:', error);
             }
         }
-        
+
+        function setupCarousel() {
+            // Setup navigation buttons
+            document.getElementById('carousel-prev').onclick = () => {
+                if (currentCarouselIndex > 0) {
+                    currentCarouselIndex--;
+                    updateCarousel();
+                }
+            };
+
+            document.getElementById('carousel-next').onclick = () => {
+                if (currentCarouselIndex < carouselSamples.length - 1) {
+                    currentCarouselIndex++;
+                    updateCarousel();
+                }
+            };
+
+            // Setup keyboard navigation
+            document.addEventListener('keydown', handleCarouselKeyboard);
+
+            // Create pagination dots
+            const pagination = document.getElementById('carousel-pagination');
+            pagination.innerHTML = '';
+
+            carouselSamples.forEach((sample, index) => {
+                const dot = document.createElement('button');
+                dot.style.cssText = `
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 50%;
+                    border: 2px solid hsl(var(--border));
+                    background: ${index === 0 ? 'hsl(var(--foreground))' : 'transparent'};
+                    cursor: pointer;
+                    padding: 0;
+                    transition: all 0.3s;
+                `;
+                dot.onclick = () => {
+                    currentCarouselIndex = index;
+                    updateCarousel();
+                };
+                pagination.appendChild(dot);
+            });
+        }
+
+        function updateCarousel() {
+            if (carouselSamples.length === 0) return;
+
+            const sample = carouselSamples[currentCarouselIndex];
+            const label = sample.type === 'fire' ? 'FIRE DETECTION' : 'NO FIRE';
+            const labelColor = sample.type === 'fire' ? 'red' : 'green';
+
+            // Update image and label
+            document.getElementById('carousel-image').src = sample.imageUrl;
+            const labelEl = document.getElementById('carousel-label');
+            labelEl.textContent = label;
+            labelEl.style.color = labelColor;
+
+            // Update counter
+            document.getElementById('carousel-counter').textContent =
+                `Sample ${currentCarouselIndex + 1} of ${carouselSamples.length}`;
+
+            // Update navigation button states
+            document.getElementById('carousel-prev').disabled = currentCarouselIndex === 0;
+            document.getElementById('carousel-next').disabled = currentCarouselIndex === carouselSamples.length - 1;
+
+            // Update pagination dots
+            const dots = document.getElementById('carousel-pagination').children;
+            Array.from(dots).forEach((dot, index) => {
+                dot.style.background = index === currentCarouselIndex ?
+                    'hsl(var(--foreground))' : 'transparent';
+            });
+        }
+
+        function handleCarouselKeyboard(e) {
+            // Only handle if carousel is visible
+            const container = document.getElementById('tile-carousel-container');
+            if (container.style.display === 'none') return;
+
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                if (currentCarouselIndex > 0) {
+                    currentCarouselIndex--;
+                    updateCarousel();
+                }
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                if (currentCarouselIndex < carouselSamples.length - 1) {
+                    currentCarouselIndex++;
+                    updateCarousel();
+                }
+            }
+        }
+
         // Function to generate tile samples from existing tiles
         async function generateTileSamples(options = {}) {
             const { seed = null, buttonId = 'generate-samples-btn' } = options;
             const btn = document.getElementById(buttonId);
-            const grid = document.getElementById('tile-samples-grid');
-            
+            const placeholder = document.getElementById('tile-samples-placeholder');
+
             if (btn) {
                 btn.disabled = true;
-                btn.textContent = '⏳ Generating previews...';
+                btn.textContent = 'Generating previews...';
             }
-            
+
             try {
                 const payload = { n_samples: 8 };
                 if (seed !== null) payload.seed = seed;
-                
+
                 const response = await fetch('/api/dataset/generate-tile-samples', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                
+
                 if (!response.ok) {
                     const error = await response.json();
                     throw new Error(error.detail || 'Failed to generate samples');
                 }
-                
+
                 // Stream progress
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
-                
-                grid.innerHTML = '<div style="color: #10b981; font-family: monospace; font-size: 0.9rem; padding: 1rem; background: #1f2937; border-radius: 6px;"></div>';
-                const logDiv = grid.querySelector('div');
-                
+
+                placeholder.innerHTML = '<div style="color: hsl(var(--foreground)); font-family: monospace; font-size: 0.9rem; padding: 1rem; background: hsl(var(--muted)); border: 1px solid hsl(var(--border)); border-radius: var(--radius);"></div>';
+                const logDiv = placeholder.querySelector('div');
+                placeholder.style.display = 'block';
+
                 while (true) {
-                    const {done, value} = await reader.read();
+                    const { done, value } = await reader.read();
                     if (done) break;
-                    
-                    buffer += decoder.decode(value, {stream: true});
+
+                    buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n\n');
                     buffer = lines.pop();
-                    
+
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
                             try {
@@ -775,8 +1182,8 @@
                                     const p = document.createElement('p');
                                     p.style.margin = '0.25rem 0';
                                     p.textContent = data.message;
-                                    if (data.type === 'error') p.style.color = '#ef4444';
-                                    else if (data.type === 'complete') p.style.color = '#22c55e';
+                                    if (data.type === 'error') p.style.color = 'hsl(var(--destructive))';
+                                    else if (data.type === 'complete') p.style.color = 'hsl(240 5% 26%)';
                                     logDiv.appendChild(p);
                                 }
                             } catch (e) {
@@ -785,51 +1192,383 @@
                         }
                     }
                 }
-                
+
                 // Reload samples after generation
                 setTimeout(() => loadTileSamples(), 500);
             } catch (error) {
-                grid.innerHTML = `<p style="color: #ef4444;">Error: ${error.message}</p>`;
+                placeholder.innerHTML = `<p style="color: hsl(var(--destructive));">Error: ${error.message}</p>`;
+                placeholder.style.display = 'block';
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.textContent = btn.id === 'btn-new-samples' ? '🎲 New Sample Set' : '🎨 Regenerate Previews';
+                    btn.textContent = btn.id === 'btn-new-samples' ? 'New Sample Set' : 'Regenerate Previews';
                 }
             }
         }
-        
+
+        // ========== DUAL-SATELLITE FUNCTIONS ==========
+        let dualSamples = [];
+        let dualCarouselIndex = 0;
+
+        async function loadDualSamples() {
+            try {
+                const response = await fetch('/api/dataset/dual-satellite-samples');
+                if (!response.ok) throw new Error('Failed to load dual samples');
+
+                const data = await response.json();
+
+                const placeholder = document.getElementById('dual-samples-placeholder');
+                const container = document.getElementById('dual-carousel-container');
+
+                if (!data.samples || data.samples.length === 0) {
+                    placeholder.innerHTML = `<p>${data.message || 'No dual-satellite samples available.'}</p>`;
+                    placeholder.style.display = 'block';
+                    container.style.display = 'none';
+                    return;
+                }
+
+                placeholder.style.display = 'none';
+                container.style.display = 'block';
+
+                const cacheBust = `?t=${Date.now()}`;
+                dualSamples = data.samples.map(s => ({
+                    ...s,
+                    imageUrl: `${data.base_path}/${s.filename}${cacheBust}`
+                }));
+
+                dualCarouselIndex = 0;
+                setupDualCarousel();
+                updateDualCarousel();
+
+            } catch (error) {
+                console.error('Error loading dual samples:', error);
+            }
+        }
+
+        function setupDualCarousel() {
+            document.getElementById('dual-carousel-prev').onclick = () => {
+                if (dualCarouselIndex > 0) {
+                    dualCarouselIndex--;
+                    updateDualCarousel();
+                }
+            };
+
+            document.getElementById('dual-carousel-next').onclick = () => {
+                if (dualCarouselIndex < dualSamples.length - 1) {
+                    dualCarouselIndex++;
+                    updateDualCarousel();
+                }
+            };
+
+            const pagination = document.getElementById('dual-carousel-pagination');
+            pagination.innerHTML = '';
+            dualSamples.forEach((_, index) => {
+                const dot = document.createElement('button');
+                dot.style.cssText = `
+                    width: 12px; height: 12px; border-radius: 50%;
+                    border: 2px solid hsl(var(--border));
+                    background: ${index === 0 ? 'hsl(var(--foreground))' : 'transparent'};
+                    cursor: pointer; padding: 0; transition: all 0.3s;
+                `;
+                dot.onclick = () => {
+                    dualCarouselIndex = index;
+                    updateDualCarousel();
+                };
+                pagination.appendChild(dot);
+            });
+        }
+
+        function updateDualCarousel() {
+            if (dualSamples.length === 0) return;
+
+            const sample = dualSamples[dualCarouselIndex];
+            document.getElementById('dual-carousel-image').src = sample.imageUrl;
+            document.getElementById('dual-carousel-label').textContent = `Dual View ${dualCarouselIndex + 1}`;
+            document.getElementById('dual-carousel-counter').textContent =
+                `Sample ${dualCarouselIndex + 1} of ${dualSamples.length}`;
+
+            document.querySelectorAll('#dual-carousel-pagination button').forEach((dot, i) => {
+                dot.style.background = i === dualCarouselIndex ? 'hsl(var(--foreground))' : 'transparent';
+            });
+        }
+
+        async function generateDualSamples() {
+            const btn = document.getElementById('btn-regenerate-dual');
+            const placeholder = document.getElementById('dual-samples-placeholder');
+
+            btn.disabled = true;
+            btn.textContent = 'Generating...';
+
+            try {
+                const response = await fetch('/api/dataset/generate-dual-satellite-samples', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ n_samples: 6 })
+                });
+
+                if (!response.ok) throw new Error('Failed to generate dual samples');
+
+                // Read SSE stream and wait for completion
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let done = false;
+
+                while (!done) {
+                    const { value, done: d } = await reader.read();
+                    done = d;
+                    if (value) {
+                        const text = decoder.decode(value);
+                        console.log('Dual generation:', text);
+                    }
+                }
+
+                setTimeout(() => loadDualSamples(), 500);
+            } catch (error) {
+                placeholder.innerHTML = `<p style="color: hsl(var(--destructive));">Error: ${error.message}</p>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Generate Dual View';
+            }
+        }
+
+        // Button handlers for dual-satellite
+        document.getElementById('btn-new-dual').addEventListener('click', () => loadDualSamples());
+        document.getElementById('btn-regenerate-dual').addEventListener('click', () => generateDualSamples());
+
+        // ========== CO-LOCATED PAIRS FUNCTIONS ==========
+        let colocatedSamples = [];
+        let colocatedCarouselIndex = 0;
+
+        async function loadColocatedSamples() {
+            try {
+                const response = await fetch('/api/dataset/colocated-samples');
+                if (!response.ok) throw new Error('Failed to load co-located samples');
+
+                const data = await response.json();
+
+                const placeholder = document.getElementById('colocated-samples-placeholder');
+                const container = document.getElementById('colocated-carousel-container');
+                const status = document.getElementById('colocated-status');
+
+                if (!data.samples || data.samples.length === 0) {
+                    placeholder.innerHTML = `<p>${data.message || 'No co-located samples available.'}</p>`;
+                    placeholder.style.display = 'block';
+                    container.style.display = 'none';
+                    status.style.display = 'none';
+                    return;
+                }
+
+                placeholder.style.display = 'none';
+                container.style.display = 'block';
+                status.style.display = 'none';
+
+                const cacheBust = `?t=${Date.now()}`;
+                colocatedSamples = data.samples.map(s => ({
+                    ...s,
+                    imageUrl: `${data.base_path}/${s.filename}${cacheBust}`
+                }));
+
+                colocatedCarouselIndex = 0;
+                setupColocatedCarousel();
+                updateColocatedCarousel();
+
+            } catch (error) {
+                console.error('Error loading co-located samples:', error);
+            }
+        }
+
+        function setupColocatedCarousel() {
+            document.getElementById('colocated-carousel-prev').onclick = () => {
+                if (colocatedCarouselIndex > 0) {
+                    colocatedCarouselIndex--;
+                    updateColocatedCarousel();
+                }
+            };
+
+            document.getElementById('colocated-carousel-next').onclick = () => {
+                if (colocatedCarouselIndex < colocatedSamples.length - 1) {
+                    colocatedCarouselIndex++;
+                    updateColocatedCarousel();
+                }
+            };
+
+            const pagination = document.getElementById('colocated-carousel-pagination');
+            pagination.innerHTML = '';
+            colocatedSamples.forEach((sample, index) => {
+                const dot = document.createElement('button');
+                const color = sample.has_fire ? 'hsl(0 70% 50%)' : 'hsl(120 50% 40%)';
+                dot.style.cssText = `
+                    width: 12px; height: 12px; border-radius: 50%;
+                    border: 2px solid ${color};
+                    background: ${index === 0 ? color : 'transparent'};
+                    cursor: pointer; padding: 0; transition: all 0.3s;
+                `;
+                dot.onclick = () => {
+                    colocatedCarouselIndex = index;
+                    updateColocatedCarousel();
+                };
+                pagination.appendChild(dot);
+            });
+        }
+
+        function updateColocatedCarousel() {
+            if (colocatedSamples.length === 0) return;
+
+            const sample = colocatedSamples[colocatedCarouselIndex];
+            document.getElementById('colocated-carousel-image').src = sample.imageUrl;
+
+            const label = sample.has_fire ? 'FIRE DETECTED' : 'NO FIRE';
+            const labelColor = sample.has_fire ? 'color: hsl(0 70% 50%);' : 'color: hsl(120 50% 40%);';
+            document.getElementById('colocated-carousel-label').innerHTML =
+                `<span style="${labelColor}">${label}</span> - ${sample.pair_name || 'Sample ' + (colocatedCarouselIndex + 1)}`;
+
+            document.getElementById('colocated-carousel-counter').textContent =
+                `Sample ${colocatedCarouselIndex + 1} of ${colocatedSamples.length}`;
+
+            document.querySelectorAll('#colocated-carousel-pagination button').forEach((dot, i) => {
+                const dotColor = colocatedSamples[i].has_fire ? 'hsl(0 70% 50%)' : 'hsl(120 50% 40%)';
+                dot.style.background = i === colocatedCarouselIndex ? dotColor : 'transparent';
+            });
+        }
+
+        async function generateColocatedPairs() {
+            const btn = document.getElementById('btn-generate-pairs');
+            const status = document.getElementById('colocated-status');
+
+            // Use same tile size as training dataset
+            const tileSize = parseInt(document.getElementById('tile-size')?.value || 128);
+
+            btn.disabled = true;
+            btn.textContent = 'Generating...';
+            status.style.display = 'block';
+            status.innerHTML = `Generating ${tileSize}x${tileSize} co-located pairs... This may take a few minutes.`;
+
+            try {
+                const response = await fetch('/api/dataset/generate-colocated-pairs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ max_fire_pairs: 30, max_nofire_pairs: 10, tile_size: tileSize })
+                });
+
+                if (!response.ok) throw new Error('Failed to generate pairs');
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let done = false;
+                let output = '';
+                let pairsGenerated = 0;
+
+                while (!done) {
+                    const { value, done: d } = await reader.read();
+                    done = d;
+                    if (value) {
+                        output += decoder.decode(value);
+                        // Show last line of output
+                        const lines = output.split('\n').filter(l => l.trim());
+                        if (lines.length > 0) {
+                            const lastLine = lines[lines.length - 1].replace(/^data: /, '');
+                            status.innerHTML = lastLine;
+
+                            // Check for no pairs generated warning
+                            if (lastLine.includes('Total: 0') || lastLine.includes('No co-located pairs')) {
+                                pairsGenerated = 0;
+                            } else if (lastLine.includes('Total:')) {
+                                const match = lastLine.match(/Total:\s*(\d+)/);
+                                if (match) pairsGenerated = parseInt(match[1]);
+                            }
+                        }
+                    }
+                }
+
+                if (pairsGenerated === 0) {
+                    status.innerHTML = `<span style="color: hsl(var(--destructive));">No pairs could be generated with ${tileSize}x${tileSize} tiles. Try: (1) Reduce tile size to 64, or (2) Fetch more Sentinel-3 data.</span>`;
+                } else {
+                    status.innerHTML = `${pairsGenerated} pairs generated! Click "2. Visualize" to create sample images.`;
+                }
+            } catch (error) {
+                status.innerHTML = `<span style="color: hsl(var(--destructive));">Error: ${error.message}</span>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '1. Generate Pairs';
+            }
+        }
+
+        async function generateColocatedViz() {
+            const btn = document.getElementById('btn-generate-colocated-viz');
+            const status = document.getElementById('colocated-status');
+
+            btn.disabled = true;
+            btn.textContent = 'Creating...';
+            status.style.display = 'block';
+            status.innerHTML = 'Creating visualizations...';
+
+            try {
+                const response = await fetch('/api/dataset/generate-colocated-viz', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ n_samples: 10 })
+                });
+
+                if (!response.ok) throw new Error('Failed to generate visualizations');
+
+                const reader = response.body.getReader();
+                let done = false;
+
+                while (!done) {
+                    const { value, done: d } = await reader.read();
+                    done = d;
+                }
+
+                status.style.display = 'none';
+                setTimeout(() => loadColocatedSamples(), 500);
+            } catch (error) {
+                status.innerHTML = `<span style="color: hsl(var(--destructive));">Error: ${error.message}</span>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '2. Visualize';
+            }
+        }
+
+        // Button handlers for co-located pairs
+        document.getElementById('btn-generate-pairs').addEventListener('click', () => generateColocatedPairs());
+        document.getElementById('btn-generate-colocated-viz').addEventListener('click', () => generateColocatedViz());
+        document.getElementById('btn-refresh-colocated').addEventListener('click', () => loadColocatedSamples());
+
         // Load on page load
         loadSummary();
         loadTileSamples();
+        loadDualSamples();
+        loadColocatedSamples();
 
         // Helper function to show status messages
         function showStatus(elementId, message, type) {
             const statusEl = document.getElementById(elementId);
             statusEl.innerHTML = message;
-            statusEl.style.color = type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : '#3b82f6';
+            statusEl.style.color = type === 'success' ? 'hsl(240 5% 26%)' : type === 'error' ? 'hsl(var(--destructive))' : 'hsl(var(--foreground))';
         }
 
         // Helper function to create progress log container
         function createProgressLog(statusId) {
             const statusEl = document.getElementById(statusId);
             const logId = statusId + '-log';
-            
+
             // Remove existing log if any
             const existingLog = document.getElementById(logId);
             if (existingLog) existingLog.remove();
-            
+
             const logContainer = document.createElement('div');
             logContainer.id = logId;
             logContainer.style.cssText = `
                 margin-top: 0.5rem;
                 padding: 0.75rem;
-                background: #1f2937;
-                border-radius: 6px;
+                background: hsl(var(--muted));
+                border: 1px solid hsl(var(--border));
+                border-radius: var(--radius);
                 max-height: 300px;
                 overflow-y: auto;
                 font-family: monospace;
                 font-size: 0.8rem;
-                color: #10b981;
+                color: hsl(var(--foreground));
                 white-space: pre-wrap;
                 word-break: break-word;
             `;
@@ -841,16 +1580,16 @@
         function appendLog(logContainer, message, type) {
             const line = document.createElement('div');
             line.style.marginBottom = '0.25rem';
-            
+
             if (type === 'stderr') {
-                line.style.color = '#fbbf24'; // yellow
+                line.style.color = 'hsl(var(--muted-foreground))';
             } else if (type === 'error') {
-                line.style.color = '#ef4444'; // red
+                line.style.color = 'hsl(var(--destructive))';
             } else if (type === 'complete') {
-                line.style.color = '#22c55e'; // green
+                line.style.color = 'hsl(240 5% 26%)';
                 line.style.fontWeight = 'bold';
             }
-            
+
             line.textContent = message;
             logContainer.appendChild(line);
             logContainer.scrollTop = logContainer.scrollHeight;
@@ -864,7 +1603,7 @@
             try {
                 const response = await fetch(url, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
 
@@ -877,25 +1616,25 @@
                 let buffer = '';
 
                 while (true) {
-                    const {done, value} = await reader.read();
-                    
+                    const { done, value } = await reader.read();
+
                     if (done) break;
-                    
-                    buffer += decoder.decode(value, {stream: true});
+
+                    buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n\n');
                     buffer = lines.pop(); // Keep incomplete line in buffer
-                    
+
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
                             try {
                                 const data = JSON.parse(line.substring(6));
-                                
+
                                 if (data.type === 'complete') {
-                                    appendLog(logContainer, '✓ ' + data.message, 'complete');
-                                    showStatus(statusId, '✅ Process completed successfully', 'success');
+                                    appendLog(logContainer, data.message, 'complete');
+                                    showStatus(statusId, 'Process completed successfully', 'success');
                                 } else if (data.type === 'error') {
-                                    appendLog(logContainer, '✗ ' + data.message, 'error');
-                                    showStatus(statusId, '❌ Process failed', 'error');
+                                    appendLog(logContainer, data.message, 'error');
+                                    showStatus(statusId, 'Process failed', 'error');
                                     hasError = true;
                                 } else {
                                     appendLog(logContainer, data.message, data.type);
@@ -907,8 +1646,8 @@
                     }
                 }
             } catch (error) {
-                appendLog(logContainer, '✗ Network error: ' + error.message, 'error');
-                showStatus(statusId, '❌ Connection error', 'error');
+                appendLog(logContainer, 'Network error: ' + error.message, 'error');
+                showStatus(statusId, 'Connection error', 'error');
                 hasError = true;
             } finally {
                 setButtonLoading(btn, false);
@@ -922,11 +1661,27 @@
             if (loading) {
                 button.disabled = true;
                 button.dataset.originalText = button.textContent;
-                button.textContent = '⏳ Processing...';
+                button.textContent = 'Processing...';
             } else {
                 button.disabled = false;
                 button.textContent = originalText || button.dataset.originalText;
             }
+        }
+
+        // Helper function to get and validate global dates
+        function getGlobalDates() {
+            const startDate = document.getElementById('global-start-date').value;
+            const endDate = document.getElementById('global-end-date').value;
+
+            if (!startDate || !endDate) {
+                return { valid: false, error: 'Please set the date range at the top of the page' };
+            }
+
+            if (new Date(startDate) > new Date(endDate)) {
+                return { valid: false, error: 'Start date must be before end date' };
+            }
+
+            return { valid: true, startDate, endDate };
         }
 
         // Sentinel-2 Form Handler
@@ -935,22 +1690,21 @@
             const btn = e.target.querySelector('button[type="submit"]');
             const statusId = 's2-status';
 
-            const startDate = document.getElementById('s2-start').value;
-            const endDate = document.getElementById('s2-end').value;
-            const maxCloud = document.getElementById('s2-cloud').value;
-            const maxScenes = document.getElementById('s2-max-scenes').value;
-
-            if (!startDate || !endDate) {
-                showStatus(statusId, '⚠️ Please provide start and end dates', 'error');
+            const dates = getGlobalDates();
+            if (!dates.valid) {
+                showStatus(statusId, dates.error, 'error');
                 return;
             }
 
+            const maxCloud = document.getElementById('s2-cloud').value;
+            const maxScenes = document.getElementById('s2-max-scenes').value;
+
             setButtonLoading(btn, true);
-            showStatus(statusId, '🔄 Starting Sentinel-2 download...', 'info');
+            showStatus(statusId, 'Starting Sentinel-2 download...', 'info');
 
             const payload = {
-                start_date: startDate,
-                end_date: endDate,
+                start_date: dates.startDate,
+                end_date: dates.endDate,
                 max_cloud: parseInt(maxCloud)
             };
             if (maxScenes) payload.max_scenes = parseInt(maxScenes);
@@ -964,37 +1718,104 @@
             const btn = e.target.querySelector('button[type="submit"]');
             const statusId = 'firms-status';
 
-            const startDate = document.getElementById('firms-start').value;
-            const endDate = document.getElementById('firms-end').value;
+            const dates = getGlobalDates();
+            if (!dates.valid) {
+                showStatus(statusId, dates.error, 'error');
+                return;
+            }
+
             const viirs = document.getElementById('firms-viirs').checked;
             const modis = document.getElementById('firms-modis').checked;
             const region = document.getElementById('firms-region').value;
 
-            if (!startDate || !endDate) {
-                showStatus(statusId, '⚠️ Start date and end date are required', 'error');
-                return;
-            }
-
             if (!viirs && !modis) {
-                showStatus(statusId, '⚠️ Please select at least one product (VIIRS or MODIS)', 'error');
+                showStatus(statusId, 'Please select at least one product (VIIRS or MODIS)', 'error');
                 return;
             }
 
             setButtonLoading(btn, true);
-            showStatus(statusId, '🔄 Fetching FIRMS data...', 'info');
+            showStatus(statusId, 'Fetching FIRMS data...', 'info');
 
             const products = [];
             if (viirs) products.push('VIIRS');
             if (modis) products.push('MODIS');
 
             const payload = {
-                start_date: startDate,
-                end_date: endDate,
+                start_date: dates.startDate,
+                end_date: dates.endDate,
                 products: products
             };
             if (region) payload.region = region;
 
             await handleStreamingRequest('/api/dataset/fetch-firms-data', payload, statusId, btn);
+        });
+
+        // Sentinel-3 Form Handler
+        document.getElementById('sentinel3-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            const statusId = 's3-status';
+
+            const dates = getGlobalDates();
+            if (!dates.valid) {
+                showStatus(statusId, dates.error, 'error');
+                return;
+            }
+
+            const slstr = document.getElementById('s3-slstr').checked;
+            const olci = document.getElementById('s3-olci').checked;
+            const maxScenes = document.getElementById('s3-max-scenes').value;
+
+            if (!slstr && !olci) {
+                showStatus(statusId, 'Please select at least one instrument (SLSTR or OLCI)', 'error');
+                return;
+            }
+
+            setButtonLoading(btn, true);
+            showStatus(statusId, 'Starting Sentinel-3 download...', 'info');
+
+            const instruments = [];
+            if (slstr) instruments.push('slstr');
+            if (olci) instruments.push('olci');
+
+            const payload = {
+                start_date: dates.startDate,
+                end_date: dates.endDate,
+                instruments: instruments
+            };
+            if (maxScenes) payload.max_scenes = parseInt(maxScenes);
+
+            await handleStreamingRequest('/api/dataset/download-sentinel3', payload, statusId, btn);
+        });
+
+        // Fetch All Sources Button Handler
+        document.getElementById('fetch-all-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('fetch-all-btn');
+
+            const dates = getGlobalDates();
+            if (!dates.valid) {
+                alert(dates.error);
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Fetching...';
+
+            // Trigger all three forms programmatically
+            const forms = ['sentinel2-form', 'firms-form', 'sentinel3-form'];
+
+            for (const formId of forms) {
+                const form = document.getElementById(formId);
+                if (form) {
+                    // Dispatch submit event
+                    form.dispatchEvent(new Event('submit', { cancelable: true }));
+                    // Small delay between submissions
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Fetch All Sources';
         });
 
         // OpenEO Form Handler
@@ -1008,12 +1829,12 @@
             const maxCloud = document.getElementById('openeo-cloud').value;
 
             if (!startDate || !endDate) {
-                showStatus(statusId, '⚠️ Please provide start and end dates', 'error');
+                showStatus(statusId, 'Please provide start and end dates', 'error');
                 return;
             }
 
             setButtonLoading(btn, true);
-            showStatus(statusId, '🔄 Starting OpenEO batch job (this may take several minutes)...', 'info');
+            showStatus(statusId, 'Starting OpenEO batch job (this may take several minutes)...', 'info');
 
             const payload = {
                 start_date: startDate,
@@ -1029,12 +1850,14 @@
             e.preventDefault();
             const btn = e.target.querySelector('button[type="submit"]');
             const statusId = 'splits-status';
+            const tileSize = document.getElementById('tile-size').value || 128;
 
             setButtonLoading(btn, true);
-            showStatus(statusId, '🔄 Preparing training splits...', 'info');
+            showStatus(statusId, `Preparing ${tileSize}x${tileSize} training tiles...`, 'info');
 
-            const success = await handleStreamingRequest('/api/dataset/prepare-splits', {}, statusId, btn);
-            
+            // Pass tile_size as query parameter
+            const success = await handleStreamingRequest(`/api/dataset/prepare-splits?tile_size=${tileSize}`, {}, statusId, btn);
+
             if (success) {
                 // Refresh the summary and tile samples to show updated statistics
                 setTimeout(() => {
@@ -1043,17 +1866,238 @@
                 }, 1000);
             }
         });
-        
+
+        // Training Form Handler
+        document.getElementById('training-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            const statusId = 'training-status';
+
+            setButtonLoading(btn, true);
+            showStatus(statusId, 'Starting model training...', 'info');
+
+            await handleStreamingRequest('/api/dataset/train', {}, statusId, btn);
+        });
+
         // Tile Sample Buttons
         document.getElementById('btn-new-samples')?.addEventListener('click', async () => {
             // Generate new samples with random seed (no seed = random)
             await generateTileSamples({ buttonId: 'btn-new-samples' });
         });
-        
+
         document.getElementById('btn-regenerate-samples')?.addEventListener('click', async () => {
             // Regenerate with fixed seed for reproducibility
             await generateTileSamples({ seed: 42, buttonId: 'btn-regenerate-samples' });
         });
+
+        // ========================================
+        // Cache Management Functions
+        // ========================================
+
+        let cacheStatsLoaded = false;
+
+        function toggleCacheStats() {
+            const content = document.getElementById('cache-content');
+            const toggleBtn = document.getElementById('btn-toggle-cache');
+            const refreshBtn = document.getElementById('btn-refresh-cache');
+
+            if (content.style.display === 'none') {
+                // Show cache content
+                content.style.display = 'block';
+                toggleBtn.textContent = 'Hide Cache Stats';
+                refreshBtn.style.display = 'inline-block';
+
+                // Load stats if not already loaded
+                if (!cacheStatsLoaded) {
+                    loadCacheStats();
+                }
+            } else {
+                // Hide cache content
+                content.style.display = 'none';
+                toggleBtn.textContent = 'Show Cache Stats';
+                refreshBtn.style.display = 'none';
+            }
+        }
+
+        async function loadCacheStats() {
+            const container = document.getElementById('cache-stats-container');
+            const grid = document.getElementById('cache-items-grid');
+
+            container.innerHTML = '<div style="text-align: center; padding: 2rem; color: hsl(var(--muted-foreground));">Loading cache statistics...</div>';
+
+            try {
+                const response = await fetch('/api/dataset/cache/stats');
+                if (!response.ok) throw new Error('Failed to load cache stats');
+
+                const data = await response.json();
+
+                // Show grid, hide loading
+                container.style.display = 'none';
+                grid.style.display = 'grid';
+
+                // Build cache cards
+                grid.innerHTML = '';
+
+                const cacheNames = {
+                    'sentinel2': { name: 'Sentinel-2 Imagery', path: 'data/ml/sentinel2/' },
+                    'sentinel3': { name: 'Sentinel-3 Thermal', path: 'data/ml/sentinel3/' },
+                    'firms': { name: 'FIRMS Fire Data', path: 'data/firms/' },
+                    'tiles': { name: 'Training Tiles', path: 'ml/data/tiles/' },
+                    'labels': { name: 'Tile Labels', path: 'ml/data/labels/' },
+                    'samples': { name: 'Sample Visualizations', path: 'data/samples/' },
+                    'processed': { name: 'Matched Dataset CSV', path: 'ml/data/processed/' }
+                };
+
+                // Add individual cache cards
+                for (const [key, info] of Object.entries(cacheNames)) {
+                    const stats = data.caches[key];
+                    if (!stats) continue;
+
+                    const card = createCacheCard(key, info.name, info.path, stats);
+                    grid.appendChild(card);
+                }
+
+                // Add "Delete All" card
+                const deleteAllCard = createDeleteAllCard(data);
+                grid.appendChild(deleteAllCard);
+
+                // Mark as loaded
+                cacheStatsLoaded = true;
+
+            } catch (error) {
+                container.innerHTML = `<div style="text-align: center; padding: 2rem; color: hsl(var(--destructive));">Error: ${error.message}</div>`;
+            }
+        }
+
+        function createCacheCard(key, name, path, stats) {
+            const card = document.createElement('div');
+            card.className = 'fetch-card';
+
+            const exists = stats.exists;
+            const sizeMB = stats.size_mb || 0;
+            const sizeGB = stats.size_gb || 0;
+            const fileCount = stats.file_count || 0;
+
+            const sizeDisplay = sizeGB > 1 ? `${sizeGB.toFixed(2)} GB` : `${sizeMB.toFixed(1)} MB`;
+
+            card.innerHTML = `
+                <h3>${name}</h3>
+                <div style="margin: 1rem 0;">
+                    <div style="font-size: 2rem; font-weight: bold; color: ${exists ? 'hsl(var(--foreground))' : 'hsl(var(--muted-foreground))'}">${sizeDisplay}</div>
+                    <div style="color: hsl(var(--muted-foreground)); font-size: 0.875rem;">${fileCount.toLocaleString()} files</div>
+                    <div style="color: hsl(var(--muted-foreground)); font-size: 0.75rem; margin-top: 0.5rem; font-family: monospace;">${path}</div>
+                    ${exists ? '' : '<div style="color: hsl(var(--muted-foreground)); font-size: 0.875rem; margin-top: 0.5rem;">No data cached</div>'}
+                </div>
+                <button 
+                    onclick="confirmDeleteCache('${key}', '${name}', ${sizeMB}, ${fileCount})"
+                    ${!exists ? 'disabled' : ''}
+                    style="background: hsl(var(--destructive)); width: 100%;"
+                >
+                    Delete ${name}
+                </button>
+            `;
+
+            return card;
+        }
+
+        function createDeleteAllCard(data) {
+            const card = document.createElement('div');
+            card.className = 'fetch-card';
+            card.style.border = '2px solid hsl(var(--destructive))';
+
+            const totalMB = data.total_size_mb || 0;
+            const totalGB = data.total_size_gb || 0;
+            const totalFiles = data.total_files || 0;
+
+            const sizeDisplay = totalGB > 1 ? `${totalGB.toFixed(2)} GB` : `${totalMB.toFixed(1)} MB`;
+
+            card.innerHTML = `
+                <h3 style="color: hsl(var(--destructive));">Delete All Cache</h3>
+                <div style="margin: 1rem 0;">
+                    <div style="font-size: 2rem; font-weight: bold; color: hsl(var(--destructive))">${sizeDisplay}</div>
+                    <div style="color: hsl(var(--muted-foreground)); font-size: 0.875rem;">${totalFiles.toLocaleString()} total files</div>
+                </div>
+                <button 
+                    onclick="confirmDeleteCache('all', 'All Cached Data', ${totalMB}, ${totalFiles})"
+                    style="background: hsl(var(--destructive)); width: 100%;"
+                >
+                    Delete All Cached Data
+                </button>
+            `;
+
+            return card;
+        }
+
+        async function confirmDeleteCache(cacheType, displayName, sizeMB, fileCount) {
+            // Step 1: Get preview of what will be deleted
+            try {
+                const response = await fetch('/api/dataset/cache/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cache_type: cacheType,
+                        confirm: false  // Just preview
+                    })
+                });
+
+                if (!response.ok) throw new Error('Failed to get deletion preview');
+
+                const preview = await response.json();
+
+                // Build confirmation message
+                let message = `CONFIRM DELETION\n\n`;
+                message += `You are about to delete: ${displayName}\n\n`;
+                message += `This will remove:\n`;
+                message += `  • ${fileCount.toLocaleString()} files\n`;
+                message += `  • ${sizeMB.toFixed(1)} MB of data\n\n`;
+
+                if (cacheType === 'all') {
+                    message += `WARNING: This will delete ALL cached data!\n\n`;
+                }
+
+                message += `This data can be re-downloaded/regenerated, but it may take time.\n\n`;
+                message += `Are you sure you want to continue?`;
+
+                if (confirm(message)) {
+                    await deleteCache(cacheType, displayName);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        async function deleteCache(cacheType, displayName) {
+            try {
+                const response = await fetch('/api/dataset/cache/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cache_type: cacheType,
+                        confirm: true  // Actually delete
+                    })
+                });
+
+                if (!response.ok) throw new Error('Failed to delete cache');
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    alert(`✅ Successfully deleted ${displayName}\n\nFreed ${result.space_freed_mb.toFixed(1)} MB of disk space.`);
+                    // Reload cache stats
+                    await loadCacheStats();
+                } else if (result.status === 'partial') {
+                    alert(`Partial deletion\n\nSome files could not be deleted:\n${result.errors.map(e => `• ${e.name}: ${e.error}`).join('\n')}`);
+                    await loadCacheStats();
+                } else {
+                    alert(`Error: ${result.message || 'Unknown error'}`);
+                }
+            } catch (error) {
+                alert(`❌ Deletion failed: ${error.message}`);
+            }
+        }
+
+
     </script>
 </body>
+
 </html>

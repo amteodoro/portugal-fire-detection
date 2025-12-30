@@ -3,6 +3,7 @@
 # Data paths
 data:
   raw_dir: "data/ml/sentinel2"
+  sentinel3_dir: "data/ml/sentinel3"  # Sentinel-3 SLSTR/OLCI data
   processed_dir: "ml/data/processed"
   tiles_dir: "ml/data/tiles"
   labels_dir: "ml/data/labels"
@@ -31,6 +32,20 @@ sentinel2:
   max_cloud_cover: 20
   resolution: 20  # meters (SWIR bands)
   
+# Sentinel-3 settings (SLSTR & OLCI)
+sentinel3:
+  collection: "sentinel-3"
+  # SLSTR thermal bands for active fire detection
+  slstr_bands:
+    thermal: ["F1", "F2"]  # 3.74µm and 10.85µm (1km resolution)
+    swir: ["S5", "S6"]  # 1.61µm and 2.25µm (500m resolution)
+    visible: ["S1", "S2", "S3"]  # 0.55µm, 0.66µm, 0.87µm (500m resolution)
+  # OLCI optical bands for burn scar mapping
+  olci_bands: ["Oa08", "Oa17", "Oa21"]  # NIR (865nm), SWIR proxy, atmospheric (300m resolution)
+  resolution: 1000  # meters (thermal bands)
+  # Note: SLSTR provides Fire Radiative Power (FRP) capability
+  enable_frp: true  # Enable FRP computation from thermal bands
+  
 # FIRMS matching settings
 firms:
   temporal_window_days: 3  # Match scenes within ±3 days of fire
@@ -39,7 +54,7 @@ firms:
   
 # Tile extraction
 tiles:
-  size: 256  # pixels
+  size: 128  # pixels (configurable from UI, 128 works well with S3 coverage)
   stride: 128  # overlap for sliding window
   fire_tile_buffer: 2  # km around fire center for positive samples
   negative_sample_ratio: 3  # negative:positive sample ratio
@@ -62,12 +77,16 @@ splits:
   
 # Model architecture
 model:
-  type: "cnn_classifier"  # Options: cnn_classifier, unet_segmentation, temporal
-  backbone: "resnet50"
+  type: "huggingface_transformer"  # Use HuggingFace vision transformers
+  # Model name from HuggingFace Hub - easy to swap!
+  # Options: "apple/mobilevit-small", "microsoft/swin-tiny-patch4-window7-224", 
+  #          "facebook/deit-tiny-patch16-224", "google/vit-base-patch16-224"
+  model_name: "apple/mobilevit-small"  # Lightweight for edge deployment
   pretrained: true
   num_classes: 2  # fire vs no-fire (binary)
   input_channels: 4  # 4 Sentinel-2 bands
-  dropout: 0.3
+  freeze_backbone: false  # Set to true for faster training, false for better accuracy
+  dropout: 0.1
   
 # Training parameters
 training:

@@ -30,7 +30,7 @@ def analyze_sentinel2_scenes(raw_dir: Path) -> Dict:
     scenes = []
     
     if not raw_dir.exists():
-        return {'total': 0, 'scenes': [], 'dates': []}
+        return {'total': 0, 'scenes': [], 'dates': [], 'date_range': (None, None)}
     
     # Find all scene directories
     for date_dir in raw_dir.iterdir():
@@ -43,11 +43,13 @@ def analyze_sentinel2_scenes(raw_dir: Path) -> Dict:
             
             # Check for metadata
             metadata_path = scene_dir / "metadata.json"
+            metadata = {}
             if metadata_path.exists():
-                with open(metadata_path, 'r') as f:
-                    metadata = json.load(f)
-            else:
-                metadata = {}
+                try:
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                except Exception as e:
+                    print(f"Warning: Failed to load metadata for {scene_dir.name}: {e}")
             
             # Count bands
             bands = list(scene_dir.glob("*.tif"))
@@ -81,19 +83,40 @@ def analyze_firms_data(firms_dir: Path) -> Dict:
         Dictionary with fire statistics
     """
     if not firms_dir.exists():
-        return {'total_files': 0, 'regions': []}
+        return {'total_files': 0, 'regions': [], 'total_fires': 0}
     
     fires_by_region = {}
+    total_fires = 0
     
-    # Find all FIRMS GeoJSON files
-    for geojson_file in firms_dir.rglob("*.geojson"):
-        region = geojson_file.parent.name
+    # Find all FIRMS JSON files (both .json and .geojson)
+    json_files = list(firms_dir.glob("*.json")) + list(firms_dir.glob("*.geojson"))
+    
+    # Also check subdirectories for region-organized data
+    json_files.extend(firms_dir.rglob("*.json"))
+    json_files.extend(firms_dir.rglob("*.geojson"))
+    
+    # Deduplicate
+    json_files = list(set(json_files))
+    
+    for json_file in json_files:
+        # Extract region name from filename or parent directory
+        if json_file.parent == firms_dir:
+            # File is directly in firms dir, extract region from filename
+            # e.g., firms_VIIRS_-9.5,36.8,-6.0,42.3_portugal_summer_2024.json
+            parts = json_file.stem.split('_')
+            if len(parts) >= 4 and not parts[-1].replace('-', '').replace(',', '').replace('.', '').isdigit():
+                region = '_'.join(parts[3:])  # Everything after bbox
+            else:
+                region = 'default'
+        else:
+            region = json_file.parent.name
         
         try:
-            with open(geojson_file, 'r') as f:
+            with open(json_file, 'r') as f:
                 data = json.load(f)
             
             num_fires = len(data.get('features', []))
+            total_fires += num_fires
             
             if region not in fires_by_region:
                 fires_by_region[region] = {
@@ -102,15 +125,16 @@ def analyze_firms_data(firms_dir: Path) -> Dict:
                 }
             
             fires_by_region[region]['files'].append({
-                'file': geojson_file.name,
+                'file': json_file.name,
                 'fires': num_fires
             })
             fires_by_region[region]['total_fires'] += num_fires
-        except:
+        except Exception as e:
+            print(f"Error reading {json_file}: {e}")
             pass
     
     return {
-        'total_files': sum(len(r['files']) for r in fires_by_region.values()),
+        'total_files': len(json_files),
         'regions': [
             {
                 'name': region,
@@ -119,8 +143,58 @@ def analyze_firms_data(firms_dir: Path) -> Dict:
             }
             for region, info in fires_by_region.items()
         ],
-        'total_fires': sum(r['total_fires'] for r in fires_by_region.values())
+        'total_fires': total_fires
     }
+
+
+def analyze_sentinel3_scenes(sentinel3_dir: Path) -> Dict:
+    """
+    Analyze Sentinel-3 SLSTR and OLCI scenes.
+    
+    Returns:
+        Dictionary with scene statistics
+    """
+    stats = {
+        'slstr_scenes': 0,
+        'olci_scenes': 0,
+        'total_scenes': 0,
+        'dates': [],
+        'date_range': (None, None)
+    }
+    
+    if not sentinel3_dir.exists():
+        return stats
+    
+    dates = set()
+    
+    # Count SLSTR scenes
+    slstr_dir = sentinel3_dir / "slstr"
+    if slstr_dir.exists():
+        for date_dir in slstr_dir.iterdir():
+            if not date_dir.is_dir():
+                continue
+            dates.add(date_dir.name)
+            for scene_dir in date_dir.iterdir():
+                if scene_dir.is_dir():
+                    stats['slstr_scenes'] += 1
+    
+    # Count OLCI scenes
+    olci_dir = sentinel3_dir / "olci"
+    if olci_dir.exists():
+        for date_dir in olci_dir.iterdir():
+            if not date_dir.is_dir():
+                continue
+            dates.add(date_dir.name)
+            for scene_dir in date_dir.iterdir():
+                if scene_dir.is_dir():
+                    stats['olci_scenes'] += 1
+    
+    stats['total_scenes'] = stats['slstr_scenes'] + stats['olci_scenes']
+    stats['dates'] = sorted(list(dates))
+    if stats['dates']:
+        stats['date_range'] = (stats['dates'][0], stats['dates'][-1])
+    
+    return stats
 
 
 def analyze_processed_tiles(processed_dir: Path) -> Dict:
@@ -133,6 +207,7 @@ def analyze_processed_tiles(processed_dir: Path) -> Dict:
     stats = {
         'fire_tiles': 0,
         'no_fire_tiles': 0,
+        'total_tiles': 0,
         'splits': {
             'train': {'fire': 0, 'no_fire': 0},
             'val': {'fire': 0, 'no_fire': 0},
@@ -283,6 +358,7 @@ def generate_summary(config: Optional[Dict] = None) -> Dict:
     
     # Paths
     raw_dir = Path(config['data']['raw_dir'])
+    sentinel3_dir = Path(config['data']['sentinel3_dir'])
     firms_dir = Path(config['data']['firms_cache'])
     processed_dir = Path(config['data']['processed_dir'])
     samples_dir = Path("data/samples")
@@ -290,6 +366,9 @@ def generate_summary(config: Optional[Dict] = None) -> Dict:
     # Analyze components
     print("  Analyzing Sentinel-2 scenes...")
     sentinel2_stats = analyze_sentinel2_scenes(raw_dir)
+    
+    print("  Analyzing Sentinel-3 scenes...")
+    sentinel3_stats = analyze_sentinel3_scenes(sentinel3_dir)
     
     print("  Analyzing FIRMS data...")
     firms_stats = analyze_firms_data(firms_dir)
@@ -320,6 +399,16 @@ def generate_summary(config: Optional[Dict] = None) -> Dict:
                 for date in sentinel2_stats['dates']
             }
         },
+        'sentinel3': {
+            'total_scenes': sentinel3_stats['total_scenes'],
+            'slstr_scenes': sentinel3_stats['slstr_scenes'],
+            'olci_scenes': sentinel3_stats['olci_scenes'],
+            'date_range': {
+                'start': sentinel3_stats['date_range'][0],
+                'end': sentinel3_stats['date_range'][1]
+            },
+            'unique_dates': len(sentinel3_stats['dates'])
+        },
         'firms': {
             'total_fire_detections': firms_stats.get('total_fires', 0),
             'total_files': firms_stats['total_files'],
@@ -335,6 +424,7 @@ def generate_summary(config: Optional[Dict] = None) -> Dict:
         'samples': sample_images,
         'status': {
             'has_sentinel2_data': sentinel2_stats['total'] > 0,
+            'has_sentinel3_data': sentinel3_stats['total_scenes'] > 0,
             'has_firms_data': firms_stats.get('total_fires', 0) > 0,
             'has_processed_tiles': tile_stats['total_tiles'] > 0,
             'ready_for_training': tile_stats['total_tiles'] > 0 and all(

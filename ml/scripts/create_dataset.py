@@ -21,6 +21,9 @@ from rasterio.transform import rowcol
 from rasterio.warp import transform as reproject_coords
 from tqdm import tqdm
 
+# Import Sentinel-3 processor
+from sentinel3_processor import Sentinel3Processor
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -55,6 +58,9 @@ class DatasetGenerator:
         
         # Create separate random state for spatial offsets (not seeded)
         self.spatial_random = random.Random()  # Uses system entropy
+        
+        # Initialize Sentinel-3 processor
+        self.s3_processor = Sentinel3Processor()
     
     def load_matched_dataset(self, dataset_path: str) -> pd.DataFrame:
         """Load the matched FIRMS-scene dataset."""
@@ -66,13 +72,21 @@ class DatasetGenerator:
         """
         Load all required bands from a Sentinel-2 scene.
         
+        All bands are resampled to match the highest resolution (10m) for consistent
+        pixel coordinates across bands. Sentinel-2 has mixed resolutions:
+        - B02, B03, B04, B08: 10m (10980x10980 pixels per granule)
+        - B05, B06, B07, B8A, B11, B12: 20m (5490x5490 pixels per granule)
+        
         Args:
             scene_path: Path to scene directory
             
         Returns:
-            Dictionary mapping band names to numpy arrays
+            Dictionary mapping band names to numpy arrays (all same resolution)
         """
+        from scipy.ndimage import zoom
+        
         bands_data = {}
+        target_shape = None  # Will be set from highest resolution band
         
         for i, band in enumerate(self.bands):
             # Use band_save_names for file lookup (e.g., B04, B08, etc.)
@@ -85,17 +99,38 @@ class DatasetGenerator:
             
             try:
                 with rasterio.open(band_file) as src:
-                    bands_data[band] = src.read(1)  # Read first band
+                    data = src.read(1)  # Read first band
                     
-                    # Store transform and profile for later use
-                    if 'transform' not in bands_data:
-                        bands_data['transform'] = src.transform
-                        bands_data['crs'] = src.crs
+                    # Store transform/CRS from this band
+                    band_transform = src.transform
+                    band_crs = src.crs
+                    band_resolution = abs(band_transform[0])  # Pixel size in meters
+                    
+                    # Set target shape from first (highest resolution) band
+                    if target_shape is None:
+                        target_shape = data.shape
+                        bands_data['transform'] = band_transform
+                        bands_data['crs'] = band_crs
                         bands_data['profile'] = src.profile
+                        bands_data['resolution'] = band_resolution
+                        logger.debug(f"Target resolution: {band_resolution}m, shape: {target_shape}")
+                    
+                    # Resample if needed (20m -> 10m)
+                    if data.shape != target_shape:
+                        scale_factor = data.shape[0] / target_shape[0]
+                        if scale_factor < 1:  # Need to upsample
+                            zoom_factor = target_shape[0] / data.shape[0]
+                            logger.debug(f"Resampling {file_band_name} from {data.shape} to {target_shape} (zoom={zoom_factor:.1f}x)")
+                            data = zoom(data, zoom_factor, order=1)  # Bilinear interpolation
+                    
+                    bands_data[band] = data
             
             except Exception as e:
                 logger.error(f"Error reading band {band} from {band_file}: {e}")
                 return None
+        
+        # Log summary
+        logger.info(f"Loaded {len(self.bands)} bands from {scene_path.name}, all resampled to {target_shape}")
         
         return bands_data
     
@@ -128,6 +163,41 @@ class DatasetGenerator:
         # Convert reprojected coordinates to pixel coordinates
         row, col = rowcol(transform, x, y)
         
+        # --- SNAP TO HOTSPOT LOGIC ---
+        # FIRMS data has low resolution (~1km). The actual fire in Sentinel-2 (20m)
+        # might be offset. We search for the brightest pixel in SWIR2 (Band 12)
+        # within a ~1km radius (50 pixels) and snap the center to it.
+        
+        # SWIR2 is usually the last band (index 3) or explicitly named 'swir2' or 'B12'
+        swir2_band_name = self.bands[-1]  # Assuming SWIR2 is last as per config
+        if swir2_band_name in bands_data:
+            swir2_data = bands_data[swir2_band_name]
+            h, w = swir2_data.shape
+            
+            search_radius = 50  # ~1000m radius at 20m resolution
+            r_min = max(0, row - search_radius)
+            r_max = min(h, row + search_radius)
+            c_min = max(0, col - search_radius)
+            c_max = min(w, col + search_radius)
+            
+            # Extract window
+            window = swir2_data[r_min:r_max, c_min:c_max]
+            
+            if window.size > 0:
+                # Find local maximum in this window
+                # We normalize index relative to window, then add window offset
+                try:
+                    local_max_idx = np.unravel_index(np.argmax(window), window.shape)
+                    max_r = r_min + local_max_idx[0]
+                    max_c = c_min + local_max_idx[1]
+                    
+                    # Update row, col to snapped location
+                    # Only snap if the hotspot is significantly bright (e.g. > 1000, fires are usually > 4000-5000)
+                    if window[local_max_idx] > 1000:
+                        row, col = int(max_r), int(max_c)
+                except Exception as e:
+                    logger.warning(f"Failed to snap to hotspot: {e}")
+
         # Calculate tile boundaries with random offset to prevent center bias
         half_size = tile_size // 2
         
@@ -164,9 +234,18 @@ class DatasetGenerator:
         multi_band_tile = np.stack(tiles, axis=0)
         
         # Calculate where the fire center is within this tile
-        # (accounting for the offset we applied)
-        fire_row_in_tile = half_size - row_offset
-        fire_col_in_tile = half_size - col_offset
+        # IMPORTANT: Must use actual row_start/col_start (after clipping), not the unclipped values!
+        # The fire is at pixel (row, col) in the scene.
+        # After extraction starting at (row_start, col_start), the fire is at:
+        fire_row_in_tile = row - row_start
+        fire_col_in_tile = col - col_start
+        
+        # Validate fire is actually within the tile (should always be true if no bugs)
+        if not (0 <= fire_row_in_tile < tile_size and 0 <= fire_col_in_tile < tile_size):
+            logger.warning(f"Fire location ({fire_row_in_tile}, {fire_col_in_tile}) outside tile bounds!")
+            # Clamp to valid range as fallback
+            fire_row_in_tile = max(0, min(tile_size - 1, fire_row_in_tile))
+            fire_col_in_tile = max(0, min(tile_size - 1, fire_col_in_tile))
         
         # Return tile and metadata with fire location and scene position
         metadata = {
@@ -239,12 +318,15 @@ class DatasetGenerator:
             if too_close:
                 continue
             
-            # Extract tile (no fire metadata needed for negatives)
+            # Extract tile (include metadata for location)
             result = self.extract_tile_at_location(bands_data, lon, lat, self.tile_size)
             
             if result is not None:
-                tile, _ = result  # Ignore metadata for negative samples
-                negative_tiles.append(tile)
+                tile, metadata = result
+                # Add tile center coordinates to metadata
+                metadata['tile_center_lat'] = lat
+                metadata['tile_center_lon'] = lon
+                negative_tiles.append((tile, metadata))
         
         if len(negative_tiles) < n_samples:
             logger.warning(f"Only generated {len(negative_tiles)}/{n_samples} negative samples")
@@ -309,11 +391,21 @@ class DatasetGenerator:
             'shape': list(tile.shape)
         }
         
-        # Add fire location if provided (for positive samples)
+        # Add location metadata (for both positive and negative samples)
         if fire_location is not None:
-            label_data['fire_pixel_row'] = int(fire_location['fire_pixel_row'])
-            label_data['fire_pixel_col'] = int(fire_location['fire_pixel_col'])
-            # Store scene coordinates for RGB extraction later  
+            # Tile center coordinates (for map display)
+            if 'tile_center_lat' in fire_location:
+                label_data['tile_center_lat'] = float(fire_location['tile_center_lat'])
+            if 'tile_center_lon' in fire_location:
+                label_data['tile_center_lon'] = float(fire_location['tile_center_lon'])
+            
+            # Fire pixel location within tile (positive samples)
+            if 'fire_pixel_row' in fire_location:
+                label_data['fire_pixel_row'] = int(fire_location['fire_pixel_row'])
+            if 'fire_pixel_col' in fire_location:
+                label_data['fire_pixel_col'] = int(fire_location['fire_pixel_col'])
+            
+            # Scene coordinates for RGB extraction later  
             if fire_location.get('scene_row_start') is not None:
                 label_data['scene_row_start'] = int(fire_location['scene_row_start'])
             if fire_location.get('scene_col_start') is not None:
@@ -339,11 +431,19 @@ class DatasetGenerator:
         """
         scene_id = scene_matches.iloc[0]['scene_id']
         scene_path = Path(scene_matches.iloc[0]['scene_path'])
+        satellite = scene_matches.iloc[0].get('satellite', 'sentinel2')
         
-        logger.info(f"Processing scene {scene_id} with {len(scene_matches)} fires")
+        logger.info(f"Processing {satellite} scene {scene_id} with {len(scene_matches)} fires")
         
-        # Load all bands
-        bands_data = self.load_scene_bands(scene_path)
+        # Detect satellite type and load bands accordingly
+        is_sentinel3 = satellite == 'sentinel3' or 'sentinel3' in str(scene_path).lower()
+        
+        if is_sentinel3:
+            # Use Sentinel-3 processor
+            bands_data = self.s3_processor.load_scene_bands(scene_path)
+        else:
+            # Use Sentinel-2 processor (existing method)
+            bands_data = self.load_scene_bands(scene_path)
         
         if bands_data is None:
             logger.error(f"Failed to load bands for scene {scene_id}")
@@ -360,13 +460,23 @@ class DatasetGenerator:
             fire_locations.append((lon, lat))
             
             # Extract tile centered on fire
-            result = self.extract_tile_at_location(bands_data, lon, lat, self.tile_size)
+            if is_sentinel3:
+                result = self.s3_processor.extract_tile_at_location(bands_data, lon, lat, self.tile_size)
+            else:
+                result = self.extract_tile_at_location(bands_data, lon, lat, self.tile_size)
             
             if result is not None:
                 tile, fire_metadata = result
                 
-                # Normalize
-                tile = self.normalize_tile(tile)
+                # Add tile center coordinates (same as fire location for positive samples)
+                fire_metadata['tile_center_lat'] = lat
+                fire_metadata['tile_center_lon'] = lon
+                
+                # Normalize (Sentinel-3 tiles are already normalized in extract_tile_at_location)
+                if not is_sentinel3:
+                    tile = self.normalize_tile(tile)
+                else:
+                    tile = tile.astype(np.float32)  # Ensure float32 dtype
                 
                 # Save with fire location metadata
                 self.save_tile(tile, label=1, scene_id=scene_id,
@@ -376,17 +486,34 @@ class DatasetGenerator:
         
         # Generate negative samples
         n_negative = len(fire_locations) * self.negative_ratio
-        negative_tiles = self.generate_negative_samples(
-            bands_data, fire_locations, int(n_negative)
-        )
         
-        for i, tile in enumerate(negative_tiles):
-            # Normalize
-            tile = self.normalize_tile(tile)
+        if is_sentinel3:
+            negative_tiles = self.s3_processor.generate_negative_samples(
+                bands_data, fire_locations, int(n_negative), self.tile_size
+            )
+        else:
+            negative_tiles = self.generate_negative_samples(
+                bands_data, fire_locations, int(n_negative)
+            )
+        
+        for i, item in enumerate(negative_tiles):
+            # Handle both old format (tile only) and new format (tile, metadata)
+            if isinstance(item, tuple):
+                tile, tile_metadata = item
+            else:
+                tile = item
+                tile_metadata = None
             
-            # Save
+            # Normalize (Sentinel-3 tiles are already normalized in extract_tile_at_location)
+            if not is_sentinel3:
+                tile = self.normalize_tile(tile)
+            else:
+                tile = tile.astype(np.float32)  # Ensure float32 dtype
+            
+            # Save with location metadata
             self.save_tile(tile, label=0, scene_id=scene_id,
-                         fire_id='none', sample_type='negative')
+                         fire_id='none', sample_type='negative',
+                         fire_location=tile_metadata)
             negative_count += 1
         
         logger.info(f"Scene {scene_id}: {positive_count} positive, {negative_count} negative samples")
@@ -408,9 +535,23 @@ class DatasetGenerator:
             logger.error("Matched dataset is empty")
             return
         
+        # Count Sentinel-2 vs Sentinel-3 scenes
+        if 'satellite' in matched_df.columns:
+            s2_count = len(matched_df[matched_df['satellite'] == 'sentinel2'])
+            s3_count = len(matched_df[matched_df['satellite'] == 'sentinel3'])
+            logger.info(f"Dataset contains {s2_count} Sentinel-2 matches and {s3_count} Sentinel-3 matches")
+            
+            # Sort to prioritize Sentinel-2 (for faster debugging/verification)
+            # Sentinel-2=0, Sentinel-3=1
+            matched_df['sat_order'] = matched_df['satellite'].map({'sentinel2': 0, 'sentinel3': 1})
+            matched_df = matched_df.sort_values('sat_order')
+            
+        else:
+            logger.info(f"Dataset contains {len(matched_df)} matches (satellite type not specified)")
+        
         # Group by scene
-        scene_groups = matched_df.groupby('scene_id')
-        logger.info(f"Processing {len(scene_groups)} scenes")
+        scene_groups = matched_df.groupby('scene_id', sort=False)
+        logger.info(f"Processing {len(scene_groups)} scenes (Sentinel-2 + Sentinel-3 with thermal bands)")
         
         total_positive = 0
         total_negative = 0
@@ -465,10 +606,20 @@ def main():
     parser.add_argument('--config', default='ml/configs/config.yaml', help='Path to config file')
     parser.add_argument('--matched-dataset', default='ml/data/processed/matched_dataset.csv',
                        help='Path to matched dataset CSV')
+    parser.add_argument('--tile-size', type=int, default=None, 
+                       help='Tile size in pixels (default: from config)')
     
     args = parser.parse_args()
     
     generator = DatasetGenerator(args.config)
+    
+    # Override tile size if provided via CLI
+    if args.tile_size:
+        generator.tile_size = args.tile_size
+        logger.info(f"Using CLI tile size: {generator.tile_size}x{generator.tile_size}")
+    else:
+        logger.info(f"Using config tile size: {generator.tile_size}x{generator.tile_size}")
+    
     generator.run(args.matched_dataset)
 
 

@@ -9,3 +9,15 @@ __pycache__/
 uv.lock
 .pytest_cache/
 *.egg-info/
+
+# Training logs and outputs
+runs/
+*.log
+checkpoints/
+models/
+
+# Agent and documentation
+.agent/
+.agents/
+*.md
+!README.md

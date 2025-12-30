@@ -143,11 +143,30 @@ class HistoricalFIRMSFetcher:
         Returns:
             GeoJSON FeatureCollection
         """
+        # Determine if we need NRT or Standard Processing (SP)
+        # NRT is only for last ~7-10 days
+        is_recent = False
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            days_diff = (datetime.now() - start_dt).days
+            if days_diff < 10:
+                is_recent = True
+        except:
+            pass
+            
         # Map product name to FIRMS product code
-        product_codes = {
-            "VIIRS": "VIIRS_SNPP_NRT",
-            "MODIS": "MODIS_NRT"
-        }
+        if is_recent:
+            product_codes = {
+                "VIIRS": "VIIRS_SNPP_NRT",
+                "MODIS": "MODIS_NRT"
+            }
+            logger.info(f"Using NRT source (data is {days_diff} days old)")
+        else:
+            product_codes = {
+                "VIIRS": "VIIRS_SNPP_SP",
+                "MODIS": "MODIS_SP"
+            }
+            logger.info(f"Using Standard Processing source (data is {days_diff} days old)")
         
         product_code = product_codes.get(product.upper())
         if not product_code:
@@ -157,14 +176,16 @@ class HistoricalFIRMSFetcher:
         lon_min, lat_min, lon_max, lat_max = bbox
         area_spec = f"{lon_min},{lat_min},{lon_max},{lat_max}"
         
-        # Format date range
-        date_param = f"{start_date},{end_date}"
+        # Calculate number of days
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+        num_days = (end - start).days + 1
         
-        # Construct URL
-        url = f"{FIRMS_AREA_BASE}/{self.api_key}/{product_code}/{area_spec}/{date_param}"
+        # Construct URL: .../area_spec/num_days/start_date
+        url = f"{FIRMS_AREA_BASE}/{self.api_key}/{product_code}/{area_spec}/{num_days}/{start_date}"
         
-        logger.info(f"Fetching {product} data: {start_date} to {end_date}")
-        logger.info(f"URL: {url[:100]}...")
+        logger.info(f"Fetching {product} data: {start_date} ({num_days} days)")
+        logger.info(f"URL: {url[:80]}...")
         
         try:
             response = await self.client.get(url)
@@ -172,6 +193,7 @@ class HistoricalFIRMSFetcher:
             
             csv_text = response.text
             logger.info(f"Received {len(csv_text)} bytes")
+            logger.info(f"Response preview: {csv_text[:500]}")
             
             # Parse to GeoJSON
             geojson = self._parse_csv_to_geojson(csv_text, product.upper())

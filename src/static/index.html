@@ -22,9 +22,9 @@
   <div id="app">
     <div id="map"></div>
     <div id="sidebar">
-      <div class="region-selector">
+      <div class="card">
         <label>
-          <strong>Region:</strong>
+          <strong>Region</strong>
           <select id="regionSelect">
             <optgroup label="Portugal">
               <option value="mainland" selected>Mainland Portugal</option>
@@ -39,29 +39,32 @@
           </select>
         </label>
       </div>
-      <hr/>
-      <h3>Active Fire Layers</h3>
-      <div class="layer-controls">
-        <label>
-          <input type="checkbox" id="viirsToggle" checked/> 
-          VIIRS <span id="viirsCount" class="badge">-</span>
-        </label>
-        <label>
-          <input type="checkbox" id="modisToggle"/> 
-          MODIS <span id="modisCount" class="badge">-</span>
-        </label>
-        <label>
-          <input type="checkbox" id="frpToggle"/> 
-          Meteosat FRP <span id="frpStatus" class="badge">-</span>
-        </label>
-        <label>
-          <input type="checkbox" id="heatmapToggle"/> 
-          Fire Heatmap <span id="heatmapCount" class="badge">-</span>
-        </label>
+
+      <div class="card">
+        <h3>Active Fire Layers</h3>
+        <div class="layer-controls">
+          <label>
+            <input type="checkbox" id="viirsToggle" checked/> 
+            VIIRS <span id="viirsCount" class="badge">-</span>
+          </label>
+          <label>
+            <input type="checkbox" id="modisToggle"/> 
+            MODIS <span id="modisCount" class="badge">-</span>
+          </label>
+          <label>
+            <input type="checkbox" id="frpToggle"/> 
+            Meteosat FRP <span id="frpStatus" class="badge">-</span>
+          </label>
+          <label>
+            <input type="checkbox" id="heatmapToggle"/> 
+            Fire Heatmap <span id="heatmapCount" class="badge">-</span>
+          </label>
+        </div>
       </div>
-      <div class="time-controls">
+
+      <div class="card">
         <label>
-          Time Period:
+          <strong>Time Period</strong>
           <select id="fireDays">
             <option value="1" selected>Last 24 hours</option>
             <option value="2">Last 2 days</option>
@@ -70,32 +73,34 @@
             <option value="10">Last 10 days</option>
           </select>
         </label>
-        <p class="info" style="margin: 5px 0; font-size: 0.85em;"><small>⚠️ FIRMS NRT data limited to 10 days max</small></p>
-        <button id="refreshBtn" class="secondary">Refresh Fire Data</button>
-        <button id="exportCsvBtn" class="success">Export to CSV</button>
+        <p class="info">FIRMS NRT data limited to 10 days max</p>
+        <button id="refreshBtn">Refresh Fire Data</button>
+        <button id="exportCsvBtn">Export to CSV</button>
       </div>
-      <hr/>
-      <h3>Sentinel-2 Search</h3>
-      <div class="search-controls">
-        <label>
-          Days: 
-          <input type="number" id="s2Days" min="1" max="30" value="7" style="width: 60px;"/>
-        </label><br/>
-        <label>
-          Cloud%: 
-          <input type="number" id="s2Cloud" min="0" max="100" value="20" style="width: 60px;"/>
-        </label><br/>
-        <button id="s2SearchBtn">Search</button>
+
+      <div class="card">
+        <h3>Sentinel-2 Search</h3>
+        <div class="search-controls">
+          <label>
+            Days 
+            <input type="number" id="s2Days" min="1" max="30" value="7" style="width: 60px;"/>
+          </label>
+          <label>
+            Cloud % 
+            <input type="number" id="s2Cloud" min="0" max="100" value="20" style="width: 60px;"/>
+          </label>
+          <button id="s2SearchBtn">Search</button>
+        </div>
+        <div id="s2Results"></div>
       </div>
-      <div id="s2Results"></div>
-      <hr/>
-      <div id="statusBox" class="status-box">
+
+      <div class="card">
         <h4>Status</h4>
-        <div id="statusMessages">Ready to load data...</div>
+        <div id="statusMessages">Ready to load data</div>
       </div>
-      <hr/>
+
       <p class="info">
-        <small>Data sources: NASA FIRMS (VIIRS/MODIS), EUMETSAT (Meteosat FRP), Copernicus (Sentinel-2)</small>
+        Data sources: NASA FIRMS (VIIRS/MODIS), EUMETSAT (Meteosat FRP), Copernicus (Sentinel-2)
       </p>
     </div>
   </div>

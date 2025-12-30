@@ -1,9 +1,9 @@
 """
-Match FIRMS fire detections with Sentinel-2 scenes.
+Match FIRMS fire detections with Sentinel-2 and Sentinel-3 scenes.
 
-This script reads FIRMS hotspot data and pairs it with available Sentinel-2 scenes
-based on spatial and temporal proximity. The output is a dataset of fire events
-with their corresponding satellite imagery.
+This script reads FIRMS hotspot data and pairs it with available Sentinel-2 and
+Sentinel-3 scenes based on spatial and temporal proximity. The output is a dataset
+of fire events with their corresponding satellite imagery.
 """
 
 import json
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class FIRMSSceneMatcher:
-    """Match FIRMS fire detections with Sentinel-2 scenes."""
+    """Match FIRMS fire detections with Sentinel-2 and Sentinel-3 scenes."""
     
     def __init__(self, config_path: str = "ml/configs/config.yaml"):
         """Initialize matcher with configuration."""
@@ -35,7 +35,8 @@ class FIRMSSceneMatcher:
         
         self.temporal_window = self.config['firms']['temporal_window_days']
         self.min_confidence = self.config['firms']['min_confidence']
-        self.raw_scenes_dir = Path(self.config['data']['raw_dir'])
+        self.sentinel2_dir = Path(self.config['data']['raw_dir'])
+        self.sentinel3_dir = Path(self.config['data']['sentinel3_dir'])
         self.output_dir = Path(self.config['data']['processed_dir'])
         self.output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -115,7 +116,7 @@ class FIRMSSceneMatcher:
         scenes = []
         
         # Scan raw data directory for scene metadata
-        for metadata_file in self.raw_scenes_dir.rglob("metadata.json"):
+        for metadata_file in self.sentinel2_dir.rglob("metadata.json"):
             try:
                 with open(metadata_file, 'r') as f:
                     scene_data = json.load(f)
@@ -146,6 +147,7 @@ class FIRMSSceneMatcher:
                 
                 scene = {
                     'scene_id': scene_id,
+                    'satellite': 'sentinel2',
                     'acq_date': acq_date,
                     'bbox': bbox,
                     'cloud_cover': properties.get('eo:cloud_cover'),
@@ -167,13 +169,96 @@ class FIRMSSceneMatcher:
         
         return df
     
+    def load_sentinel3_scenes(self) -> pd.DataFrame:
+        """
+        Load metadata for all downloaded Sentinel-3 SLSTR scenes.
+        
+        Returns:
+            DataFrame with scene metadata including bbox and date
+        """
+        scenes = []
+        
+        # Scan Sentinel-3 SLSTR directory for scene metadata
+        slstr_dir = self.sentinel3_dir / "slstr"
+        if not slstr_dir.exists():
+            logger.warning(f"Sentinel-3 SLSTR directory not found: {slstr_dir}")
+            return pd.DataFrame()
+        
+        for metadata_file in slstr_dir.rglob("metadata.json"):
+            try:
+                with open(metadata_file, 'r') as f:
+                    scene_data = json.load(f)
+                
+                scene_id = scene_data.get('id') or scene_data.get('properties', {}).get('title', metadata_file.parent.name)
+                properties = scene_data.get('properties', {})
+                
+                # Extract bounding box
+                bbox_geom = scene_data.get('bbox')
+                if bbox_geom and len(bbox_geom) == 4:
+                    bbox = box(bbox_geom[0], bbox_geom[1], bbox_geom[2], bbox_geom[3])
+                elif 'geometry' in scene_data and scene_data['geometry']:
+                    # Extract from geometry
+                    geom = scene_data['geometry']
+                    if geom['type'] == 'Polygon':
+                        coords = geom['coordinates'][0]
+                        lons = [c[0] for c in coords]
+                        lats = [c[1] for c in coords]
+                        bbox = box(min(lons), min(lats), max(lons), max(lats))
+                    else:
+                        logger.warning(f"Unsupported geometry type for scene {scene_id}")
+                        continue
+                else:
+                    logger.warning(f"No bbox found for Sentinel-3 scene {scene_id}")
+                    continue
+                
+                # Extract acquisition date
+                datetime_str = properties.get('datetime') or properties.get('startDate')
+                if datetime_str:
+                    acq_date = datetime.fromisoformat(datetime_str.replace('Z', '+00:00').split('T')[0]).date()
+                else:
+                    # Try to extract from parent directory name (date folder)
+                    date_str = metadata_file.parent.parent.name
+                    try:
+                        acq_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    except:
+                        acq_date = None
+                
+                if not acq_date:
+                    logger.warning(f"No acquisition date for Sentinel-3 scene {scene_id}")
+                    continue
+                
+                scene = {
+                    'scene_id': scene_id,
+                    'satellite': 'sentinel3',
+                    'instrument': 'slstr',
+                    'acq_date': acq_date,
+                    'bbox': bbox,
+                    'cloud_cover': None,  # SLSTR doesn't have cloud cover in same format
+                    'path': metadata_file.parent
+                }
+                
+                scenes.append(scene)
+            
+            except Exception as e:
+                logger.warning(f"Error reading Sentinel-3 metadata {metadata_file}: {e}")
+                continue
+        
+        if not scenes:
+            logger.warning("No Sentinel-3 SLSTR scenes found")
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(scenes)
+        logger.info(f"Loaded {len(df)} Sentinel-3 SLSTR scenes")
+        
+        return df
+    
     def match_fire_to_scenes(
         self,
         fire_row: pd.Series,
         scenes_df: pd.DataFrame
     ) -> List[Dict]:
         """
-        Find Sentinel-2 scenes that match a fire detection.
+        Find Sentinel-2 or Sentinel-3 scenes that match a fire detection.
         
         Matching criteria:
         - Scene bbox contains fire location
@@ -209,6 +294,8 @@ class FIRMSSceneMatcher:
                 'fire_confidence': fire_row['confidence'],
                 'fire_frp': fire_row['frp'],
                 'fire_source': fire_row['source'],
+                'satellite': scene.get('satellite', 'sentinel2'),
+                'instrument': scene.get('instrument'),
                 'scene_id': scene['scene_id'],
                 'scene_date': scene['acq_date'].isoformat(),
                 'scene_path': str(scene['path']),
@@ -275,12 +362,13 @@ class FIRMSSceneMatcher:
         
         return stats
     
-    def run(self, output_name: str = "matched_dataset.csv") -> Path:
+    def run(self, output_name: str = "matched_dataset.csv", include_sentinel3: bool = True) -> Path:
         """
         Main execution: match FIRMS to scenes and save dataset.
         
         Args:
             output_name: Output CSV filename
+            include_sentinel3: Whether to include Sentinel-3 matches
             
         Returns:
             Path to saved dataset CSV
@@ -295,10 +383,24 @@ class FIRMSSceneMatcher:
         
         # Load available Sentinel-2 scenes
         logger.info("Loading Sentinel-2 scene metadata...")
-        scenes_df = self.load_available_scenes()
+        sentinel2_scenes_df = self.load_available_scenes()
         
-        if scenes_df.empty:
-            logger.error("No Sentinel-2 scenes available. Please download scenes first.")
+        # Load available Sentinel-3 scenes
+        sentinel3_scenes_df = pd.DataFrame()
+        if include_sentinel3:
+            logger.info("Loading Sentinel-3 scene metadata...")
+            sentinel3_scenes_df = self.load_sentinel3_scenes()
+        
+        # Combine scene dataframes
+        if not sentinel2_scenes_df.empty and not sentinel3_scenes_df.empty:
+            scenes_df = pd.concat([sentinel2_scenes_df, sentinel3_scenes_df], ignore_index=True)
+            logger.info(f"Combined {len(sentinel2_scenes_df)} Sentinel-2 and {len(sentinel3_scenes_df)} Sentinel-3 scenes")
+        elif not sentinel2_scenes_df.empty:
+            scenes_df = sentinel2_scenes_df
+        elif not sentinel3_scenes_df.empty:
+            scenes_df = sentinel3_scenes_df
+        else:
+            logger.error("No satellite scenes available. Please download Sentinel-2 or Sentinel-3 scenes first.")
             return None
         
         # Match fires to scenes
@@ -346,7 +448,11 @@ def main():
     args = parser.parse_args()
     
     matcher = FIRMSSceneMatcher(args.config)
-    matcher.run(args.output)
+    result = matcher.run(args.output)
+    
+    if result is None:
+        import sys
+        sys.exit(1)
 
 
 if __name__ == "__main__":

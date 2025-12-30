@@ -244,11 +244,12 @@ class Sentinel2Downloader:
         tasks = [download_with_semaphore(scene) for scene in scenes]
         
         results = []
-        for coro in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Downloading scenes"):
+        for i, coro in enumerate(asyncio.as_completed(tasks)):
             try:
                 result = await coro
                 if result:
                     results.append(result)
+                    logger.info(f"Progress: {len(results)}/{len(tasks)} scenes downloaded")
             except Exception as e:
                 logger.error(f"Error in batch download: {e}")
         
