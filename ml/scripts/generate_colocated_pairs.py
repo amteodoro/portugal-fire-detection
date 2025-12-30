@@ -72,8 +72,9 @@ class ColocatedTileGenerator:
         self.tile_size = tile_size or self.config.get('tiles', {}).get('size', 128)
         self.s3_processor = Sentinel3Processor()
         
-        # S2 bands
-        self.s2_bands = ['B04', 'B08', 'B11', 'B12']  # Red, NIR, SWIR1, SWIR2
+        # S2 bands - expanded to include RGB for True Color visualization
+        # Order: B02(Blue), B03(Green), B04(Red), B08(NIR), B11(SWIR1), B12(SWIR2)
+        self.s2_bands = ['B02', 'B03', 'B04', 'B08', 'B11', 'B12']
     
     def is_in_portugal(self, lat: float, lon: float) -> bool:
         """Check if coordinates are within Portugal bounds."""

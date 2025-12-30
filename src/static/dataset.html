@@ -317,6 +317,268 @@
             color: hsl(var(--muted-foreground));
             font-style: italic;
         }
+
+        /* Tooltip styles */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+            border-bottom: 1px dotted hsl(var(--muted-foreground));
+        }
+
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            min-width: 200px;
+            max-width: 300px;
+            background-color: hsl(var(--card));
+            color: hsl(var(--foreground));
+            text-align: left;
+            border-radius: var(--radius);
+            padding: 0.75rem 1rem;
+            position: absolute;
+            z-index: 100;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s, visibility 0.3s;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border: 1px solid hsl(var(--border));
+            font-size: 0.8125rem;
+            font-weight: normal;
+            line-height: 1.5;
+        }
+
+        .tooltip .tooltip-text::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -6px;
+            border-width: 6px;
+            border-style: solid;
+            border-color: hsl(var(--card)) transparent transparent transparent;
+        }
+
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        /* Improved refresh button */
+        .btn-refresh {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, hsl(240 5% 34%) 0%, hsl(240 5% 26%) 100%);
+            color: white;
+            border: none;
+            border-radius: var(--radius);
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn-refresh:hover {
+            background: linear-gradient(135deg, hsl(240 5% 40%) 0%, hsl(240 5% 32%) 100%);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .btn-refresh:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn-refresh:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Carousel navigation improvements */
+        .carousel-nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: auto;
+            max-width: 5rem;
+            min-width: 4rem;
+            padding: 0.75rem 1.25rem;
+            border-radius: 2rem;
+            background: linear-gradient(135deg, hsl(240 5% 34%) 0%, hsl(240 5% 26%) 100%);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            font-weight: 600;
+            z-index: 10;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s ease;
+            color: white;
+            letter-spacing: 0.02em;
+            margin-top: 0;
+        }
+
+        .carousel-nav-btn:hover {
+            background: linear-gradient(135deg, hsl(240 5% 45%) 0%, hsl(240 5% 35%) 100%);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+            transform: translateY(-50%) scale(1.05);
+        }
+
+        .carousel-nav-btn:active {
+            transform: translateY(-50%) scale(0.98);
+        }
+
+        .carousel-nav-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            transform: translateY(-50%);
+            background: hsl(240 5% 50%);
+        }
+
+        .carousel-nav-btn:disabled:hover {
+            background: hsl(240 5% 50%);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            transform: translateY(-50%);
+        }
+
+        .carousel-nav-btn.prev {
+            left: 0.75rem;
+        }
+
+        .carousel-nav-btn.next {
+            right: 0.75rem;
+        }
+
+        /* Image loading states */
+        .sample-image-container {
+            position: relative;
+            min-height: 300px;
+            background: hsl(var(--muted));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sample-image-container .loading-spinner {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 3px solid hsl(var(--border));
+            border-top: 3px solid hsl(var(--foreground));
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .sample-image-container img {
+            transition: opacity 0.3s ease;
+        }
+
+        .sample-image-container img.loading {
+            opacity: 0;
+        }
+
+        .sample-image-container img.loaded {
+            opacity: 1;
+        }
+
+        /* Empty state improvements */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            background: linear-gradient(135deg, hsl(var(--muted) / 0.5) 0%, hsl(var(--card)) 100%);
+            border-radius: var(--radius);
+            border: 2px dashed hsl(var(--border));
+        }
+
+        .empty-state-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+            margin-bottom: 0.5rem;
+        }
+
+        .empty-state-message {
+            color: hsl(var(--muted-foreground));
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+
+        .empty-state-hint {
+            color: hsl(var(--muted-foreground));
+            font-size: 0.8rem;
+            font-style: italic;
+        }
+
+        /* Sample metadata display */
+        .sample-metadata {
+            background: hsl(var(--muted));
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius);
+            margin-top: 1rem;
+            font-size: 0.8rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 0.5rem;
+        }
+
+        .sample-metadata-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sample-metadata-label {
+            color: hsl(var(--muted-foreground));
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.15rem;
+        }
+
+        .sample-metadata-value {
+            color: hsl(var(--foreground));
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.8rem;
+        }
+
+        /* Pagination dot improvements */
+        .carousel-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid hsl(var(--border));
+            background: transparent;
+            cursor: pointer;
+            padding: 0;
+            transition: all 0.3s ease;
+        }
+
+        .carousel-dot:hover {
+            border-color: hsl(var(--foreground));
+            transform: scale(1.1);
+        }
+
+        .carousel-dot.active {
+            background: hsl(var(--foreground));
+            border-color: hsl(var(--foreground));
+        }
     </style>
 </head>
 
@@ -336,7 +598,7 @@
         <header>
             <h1>Training Dataset Summary</h1>
             <p class="subtitle">Sentinel-2 Imagery & FIRMS Fire Detection Data</p>
-            <button onclick="refreshData()">Refresh Data</button>
+            <button class="btn-refresh" onclick="refreshData()">Refresh Data</button>
         </header>
 
         <div id="loading" class="loading">
@@ -440,16 +702,24 @@
 
                     <!-- FIRMS Card -->
                     <div class="fetch-card">
-                        <h3>FIRMS Fire Data</h3>
+                        <h3><span class="tooltip">FIRMS<span class="tooltip-text">Fire Information for Resource
+                                    Management System - NASA's global fire monitoring database using satellite data from
+                                    multiple sources</span></span> Fire Data</h3>
                         <p>NASA fire detections from VIIRS and MODIS satellites.</p>
                         <form id="firms-form">
                             <div style="display: block; margin-bottom: 0.5rem;">
                                 <strong>Products:</strong>
                                 <label style="display: inline-block; margin-right: 1rem; margin-top: 0.25rem;">
-                                    <input type="checkbox" id="firms-viirs" checked> VIIRS
+                                    <input type="checkbox" id="firms-viirs" checked> <span class="tooltip">VIIRS<span
+                                            class="tooltip-text">Visible Infrared Imaging Radiometer Suite -
+                                            High-resolution sensor (375m) on Suomi NPP and NOAA-20 satellites. Detects
+                                            smaller fires with better accuracy.</span></span>
                                 </label>
                                 <label style="display: inline-block;">
-                                    <input type="checkbox" id="firms-modis" checked> MODIS
+                                    <input type="checkbox" id="firms-modis" checked> <span class="tooltip">MODIS<span
+                                            class="tooltip-text">Moderate Resolution Imaging Spectroradiometer - Sensor
+                                            on Terra and Aqua satellites (1km resolution). Longer historical record
+                                            since 2000.</span></span>
                                 </label>
                             </div>
                             <label style="display: block; margin-bottom: 0.5rem;">
@@ -472,10 +742,15 @@
                             <div style="display: block; margin-bottom: 0.5rem;">
                                 <strong>Instruments:</strong>
                                 <label style="display: inline-block; margin-right: 1rem; margin-top: 0.25rem;">
-                                    <input type="checkbox" id="s3-slstr" checked> SLSTR (Thermal)
+                                    <input type="checkbox" id="s3-slstr" checked> <span class="tooltip">SLSTR<span
+                                            class="tooltip-text">Sea and Land Surface Temperature Radiometer - Measures
+                                            thermal infrared for fire detection and temperature monitoring</span></span>
+                                    (Thermal)
                                 </label>
                                 <label style="display: inline-block;">
-                                    <input type="checkbox" id="s3-olci"> OLCI (Optical)
+                                    <input type="checkbox" id="s3-olci"> <span class="tooltip">OLCI<span
+                                            class="tooltip-text">Ocean and Land Colour Instrument - Optical sensor for
+                                            vegetation, water quality, and burn scar detection</span></span> (Optical)
                                 </label>
                             </div>
                             <label style="display: block; margin-bottom: 0.5rem;">
@@ -660,10 +935,17 @@
                     <div class="legend-text">
                         <strong>What you're seeing:</strong> Sample 256x256 pixel tiles extracted for model
                         training.<br>
-                        <strong>Panels:</strong> Top-left (False Color), Top-right (NIR), Bottom-left (SWIR2/Thermal),
-                        Bottom-right (SWIR1)<br>
+                        <strong>Panels:</strong> Top-left (False Color), Top-right (<span class="tooltip">NIR<span
+                                class="tooltip-text">Near-Infrared (Band 8, 842nm) - Highlights healthy vegetation as
+                                bright areas. Stressed or burned vegetation appears darker.</span></span>), Bottom-left
+                        (<span class="tooltip">SWIR2<span class="tooltip-text">Short-Wave Infrared 2 (Band 12, 2190nm) -
+                                Very sensitive to active fires which appear bright white. Also shows burn
+                                scars.</span></span>/Thermal),
+                        Bottom-right (<span class="tooltip">SWIR1<span class="tooltip-text">Short-Wave Infrared 1 (Band
+                                11, 1610nm) - Useful for distinguishing burned areas and detecting smoldering
+                                fires.</span></span>)<br>
                         <strong>Fire tiles:</strong> Red circle marks the FIRMS fire detection center<br>
-                        <em>Use arrows to navigate between samples</em>
+                        <em>Use keyboard arrows or click navigation buttons to browse samples</em>
                     </div>
                 </div>
 
@@ -673,22 +955,26 @@
                     <div
                         style="position: relative; background: hsl(var(--muted)); border-radius: var(--radius); padding: 2rem; margin-bottom: 1.5rem;">
                         <!-- Navigation Buttons -->
-                        <button id="carousel-prev"
-                            style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; background: hsl(var(--card)); border: 2px solid hsl(var(--border)); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
-                            ‹
+                        <button id="carousel-prev" class="carousel-nav-btn prev">
+                            Prev
                         </button>
-                        <button id="carousel-next"
-                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; background: hsl(var(--card)); border: 2px solid hsl(var(--border)); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
-                            ›
+                        <button id="carousel-next" class="carousel-nav-btn next">
+                            Next
                         </button>
 
                         <!-- Sample Image -->
-                        <div style="text-align: center; padding: 0 4rem;">
+                        <div style="text-align: center; padding: 0 5rem;">
                             <div id="carousel-label"
                                 style="font-size: 1.5rem; font-weight: bold; margin-bottom: 1rem; color: hsl(var(--foreground));">
                             </div>
-                            <img id="carousel-image" src="" alt="Tile Sample"
-                                style="max-width: 100%; height: auto; border-radius: var(--radius); border: 2px solid hsl(var(--border)); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                            <div class="sample-image-container" id="carousel-image-container">
+                                <div class="loading-spinner" id="carousel-spinner"></div>
+                                <img id="carousel-image" src="" alt="Tile Sample" class="loading"
+                                    style="max-width: 100%; height: auto; border-radius: var(--radius); border: 2px solid hsl(var(--border)); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                            </div>
+                            <!-- Sample metadata -->
+                            <div id="carousel-metadata" class="sample-metadata" style="display: none;">
+                            </div>
                         </div>
                     </div>
 
@@ -705,9 +991,12 @@
                 </div>
 
                 <!-- Loading/Empty State -->
-                <div id="tile-samples-placeholder"
-                    style="text-align: center; padding: 3rem; color: hsl(var(--muted-foreground));">
-                    <p>No tile samples available. Click "Regenerate Previews" to generate visualizations.</p>
+                <div id="tile-samples-placeholder" class="empty-state">
+                    <div class="empty-state-title">No Tile Samples Available</div>
+                    <div class="empty-state-message">Generate tile previews to visualize training samples and verify
+                        data quality.</div>
+                    <div class="empty-state-hint">Click "Regenerate Previews" above to create sample visualizations
+                    </div>
                 </div>
             </div>
 
@@ -725,8 +1014,19 @@
                     <div class="legend-text">
                         <strong>Purpose:</strong> Shows the same FIRMS fire detection from both Sentinel-2 (optical) and
                         Sentinel-3 (thermal).<br>
-                        <strong>Row 1:</strong> Sentinel-2 bands (Red, NIR, SWIR1, SWIR2)<br>
-                        <strong>Row 2:</strong> Sentinel-3 thermal bands (F1, F2, F1-F2 anomaly, composite)<br>
+                        <strong>Row 1:</strong> Sentinel-2 bands (Red, <span class="tooltip">NIR<span
+                                class="tooltip-text">Near-Infrared (842nm) - Healthy vegetation appears
+                                bright</span></span>, <span class="tooltip">SWIR1<span class="tooltip-text">Short-Wave
+                                Infrared 1 (1610nm) - Detects moisture and burn scars</span></span>, <span
+                            class="tooltip">SWIR2<span class="tooltip-text">Short-Wave Infrared 2 (2190nm) - Very
+                                sensitive to active fires</span></span>)<br>
+                        <strong>Row 2:</strong> Sentinel-3 thermal bands (<span class="tooltip">F1<span
+                                class="tooltip-text">Band F1 (3.7 microns) - Mid-infrared band extremely sensitive to
+                                high-temperature fires</span></span>, <span class="tooltip">F2<span
+                                class="tooltip-text">Band F2 (10.8 microns) - Thermal infrared for background
+                                temperature measurement</span></span>, <span class="tooltip">F1-F2<span
+                                class="tooltip-text">Difference between F1 and F2 bands - Isolates fire thermal
+                                anomalies from background</span></span> anomaly, composite)<br>
                         <strong>Row 3:</strong> Composites and location map
                     </div>
                 </div>
@@ -735,20 +1035,21 @@
                 <div id="dual-carousel-container" style="display: none;">
                     <div
                         style="position: relative; background: hsl(var(--muted)); border-radius: var(--radius); padding: 2rem; margin-bottom: 1.5rem;">
-                        <button id="dual-carousel-prev"
-                            style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; background: hsl(var(--card)); border: 2px solid hsl(var(--border)); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 10;">
-                            ‹
+                        <button id="dual-carousel-prev" class="carousel-nav-btn prev">
+                            Prev
                         </button>
-                        <button id="dual-carousel-next"
-                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; background: hsl(var(--card)); border: 2px solid hsl(var(--border)); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 10;">
-                            ›
+                        <button id="dual-carousel-next" class="carousel-nav-btn next">
+                            Next
                         </button>
-                        <div style="text-align: center; padding: 0 4rem;">
+                        <div style="text-align: center; padding: 0 5rem;">
                             <div id="dual-carousel-label"
                                 style="font-size: 1.25rem; font-weight: bold; margin-bottom: 1rem; color: hsl(var(--foreground));">
                             </div>
-                            <img id="dual-carousel-image" src="" alt="Dual Satellite Sample"
-                                style="max-width: 100%; height: auto; border-radius: var(--radius); border: 2px solid hsl(var(--border));">
+                            <div class="sample-image-container" id="dual-image-container">
+                                <div class="loading-spinner" id="dual-spinner"></div>
+                                <img id="dual-carousel-image" src="" alt="Dual Satellite Sample" class="loading"
+                                    style="max-width: 100%; height: auto; border-radius: var(--radius); border: 2px solid hsl(var(--border));">
+                            </div>
                         </div>
                     </div>
                     <div id="dual-carousel-pagination"
@@ -759,9 +1060,11 @@
                     </div>
                 </div>
 
-                <div id="dual-samples-placeholder"
-                    style="text-align: center; padding: 3rem; color: hsl(var(--muted-foreground));">
-                    <p>No dual-satellite samples available. Click "Generate Dual View" to create them.</p>
+                <div id="dual-samples-placeholder" class="empty-state">
+                    <div class="empty-state-title">No Dual-Satellite Samples</div>
+                    <div class="empty-state-message">Generate visualizations showing the same fire from both optical and
+                        thermal satellites.</div>
+                    <div class="empty-state-hint">Click "Generate Dual View" to create comparison images</div>
                 </div>
             </div>
 
@@ -797,20 +1100,21 @@
                 <div id="colocated-carousel-container" style="display: none;">
                     <div
                         style="position: relative; background: hsl(var(--muted)); border-radius: var(--radius); padding: 2rem; margin-bottom: 1.5rem;">
-                        <button id="colocated-carousel-prev"
-                            style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; background: hsl(var(--card)); border: 2px solid hsl(var(--border)); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 10;">
-                            ‹
+                        <button id="colocated-carousel-prev" class="carousel-nav-btn prev">
+                            Prev
                         </button>
-                        <button id="colocated-carousel-next"
-                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); width: 3rem; height: 3rem; border-radius: 50%; background: hsl(var(--card)); border: 2px solid hsl(var(--border)); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; z-index: 10;">
-                            ›
+                        <button id="colocated-carousel-next" class="carousel-nav-btn next">
+                            Next
                         </button>
-                        <div style="text-align: center; padding: 0 4rem;">
+                        <div style="text-align: center; padding: 0 5rem;">
                             <div id="colocated-carousel-label"
                                 style="font-size: 1.25rem; font-weight: bold; margin-bottom: 1rem; color: hsl(var(--foreground));">
                             </div>
-                            <img id="colocated-carousel-image" src="" alt="Co-Located Sample"
-                                style="max-width: 100%; height: auto; border-radius: var(--radius); border: 2px solid hsl(var(--border));">
+                            <div class="sample-image-container" id="colocated-image-container">
+                                <div class="loading-spinner" id="colocated-spinner"></div>
+                                <img id="colocated-carousel-image" src="" alt="Co-Located Sample" class="loading"
+                                    style="max-width: 100%; height: auto; border-radius: var(--radius); border: 2px solid hsl(var(--border));">
+                            </div>
                         </div>
                     </div>
                     <div id="colocated-carousel-pagination"
@@ -821,9 +1125,12 @@
                     </div>
                 </div>
 
-                <div id="colocated-samples-placeholder"
-                    style="text-align: center; padding: 3rem; color: hsl(var(--muted-foreground));">
-                    <p>No co-located samples. Click "1. Generate Pairs" first, then "2. Visualize".</p>
+                <div id="colocated-samples-placeholder" class="empty-state">
+                    <div class="empty-state-title">No Co-Located Samples</div>
+                    <div class="empty-state-message">Generate tiles showing the same geographic location from both
+                        Sentinel-2 and Sentinel-3.</div>
+                    <div class="empty-state-hint">Click "1. Generate Pairs" first, then "2. Visualize" to create
+                        comparison images</div>
                 </div>
             </div>
 
@@ -1089,11 +1396,51 @@
             const label = sample.type === 'fire' ? 'FIRE DETECTION' : 'NO FIRE';
             const labelColor = sample.type === 'fire' ? 'red' : 'green';
 
+            // Show loading state
+            const img = document.getElementById('carousel-image');
+            const spinner = document.getElementById('carousel-spinner');
+
+            img.classList.remove('loaded');
+            img.classList.add('loading');
+            if (spinner) spinner.style.display = 'block';
+
+            // Setup image load handler
+            img.onload = function () {
+                img.classList.remove('loading');
+                img.classList.add('loaded');
+                if (spinner) spinner.style.display = 'none';
+            };
+
+            img.onerror = function () {
+                img.classList.remove('loading');
+                if (spinner) spinner.style.display = 'none';
+            };
+
             // Update image and label
-            document.getElementById('carousel-image').src = sample.imageUrl;
+            img.src = sample.imageUrl;
             const labelEl = document.getElementById('carousel-label');
             labelEl.textContent = label;
             labelEl.style.color = labelColor;
+
+            // Update metadata display
+            const metadataEl = document.getElementById('carousel-metadata');
+            if (metadataEl) {
+                metadataEl.style.display = 'grid';
+                metadataEl.innerHTML = `
+                    <div class="sample-metadata-item">
+                        <span class="sample-metadata-label">Sample Type</span>
+                        <span class="sample-metadata-value">${sample.type === 'fire' ? 'Fire Detection' : 'No Fire (Background)'}</span>
+                    </div>
+                    <div class="sample-metadata-item">
+                        <span class="sample-metadata-label">Tile ID</span>
+                        <span class="sample-metadata-value">${sample.filename ? sample.filename.replace('.png', '') : 'N/A'}</span>
+                    </div>
+                    <div class="sample-metadata-item">
+                        <span class="sample-metadata-label">Data Source</span>
+                        <span class="sample-metadata-value">${sample.satellite || 'Sentinel-2/3'}</span>
+                    </div>
+                `;
+            }
 
             // Update counter
             document.getElementById('carousel-counter').textContent =
@@ -1282,10 +1629,34 @@
             if (dualSamples.length === 0) return;
 
             const sample = dualSamples[dualCarouselIndex];
-            document.getElementById('dual-carousel-image').src = sample.imageUrl;
+
+            // Show loading state
+            const img = document.getElementById('dual-carousel-image');
+            const spinner = document.getElementById('dual-spinner');
+
+            img.classList.remove('loaded');
+            img.classList.add('loading');
+            if (spinner) spinner.style.display = 'block';
+
+            img.onload = function () {
+                img.classList.remove('loading');
+                img.classList.add('loaded');
+                if (spinner) spinner.style.display = 'none';
+            };
+
+            img.onerror = function () {
+                img.classList.remove('loading');
+                if (spinner) spinner.style.display = 'none';
+            };
+
+            img.src = sample.imageUrl;
             document.getElementById('dual-carousel-label').textContent = `Dual View ${dualCarouselIndex + 1}`;
             document.getElementById('dual-carousel-counter').textContent =
                 `Sample ${dualCarouselIndex + 1} of ${dualSamples.length}`;
+
+            // Update navigation button states
+            document.getElementById('dual-carousel-prev').disabled = dualCarouselIndex === 0;
+            document.getElementById('dual-carousel-next').disabled = dualCarouselIndex === dualSamples.length - 1;
 
             document.querySelectorAll('#dual-carousel-pagination button').forEach((dot, i) => {
                 dot.style.background = i === dualCarouselIndex ? 'hsl(var(--foreground))' : 'transparent';
@@ -1415,7 +1786,27 @@
             if (colocatedSamples.length === 0) return;
 
             const sample = colocatedSamples[colocatedCarouselIndex];
-            document.getElementById('colocated-carousel-image').src = sample.imageUrl;
+
+            // Show loading state
+            const img = document.getElementById('colocated-carousel-image');
+            const spinner = document.getElementById('colocated-spinner');
+
+            img.classList.remove('loaded');
+            img.classList.add('loading');
+            if (spinner) spinner.style.display = 'block';
+
+            img.onload = function () {
+                img.classList.remove('loading');
+                img.classList.add('loaded');
+                if (spinner) spinner.style.display = 'none';
+            };
+
+            img.onerror = function () {
+                img.classList.remove('loading');
+                if (spinner) spinner.style.display = 'none';
+            };
+
+            img.src = sample.imageUrl;
 
             const label = sample.has_fire ? 'FIRE DETECTED' : 'NO FIRE';
             const labelColor = sample.has_fire ? 'color: hsl(0 70% 50%);' : 'color: hsl(120 50% 40%);';
@@ -1424,6 +1815,10 @@
 
             document.getElementById('colocated-carousel-counter').textContent =
                 `Sample ${colocatedCarouselIndex + 1} of ${colocatedSamples.length}`;
+
+            // Update navigation button states
+            document.getElementById('colocated-carousel-prev').disabled = colocatedCarouselIndex === 0;
+            document.getElementById('colocated-carousel-next').disabled = colocatedCarouselIndex === colocatedSamples.length - 1;
 
             document.querySelectorAll('#colocated-carousel-pagination button').forEach((dot, i) => {
                 const dotColor = colocatedSamples[i].has_fire ? 'hsl(0 70% 50%)' : 'hsl(120 50% 40%)';

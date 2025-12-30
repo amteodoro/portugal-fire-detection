@@ -36,10 +36,16 @@ logger = logging.getLogger(__name__)
 class DualSatelliteVisualizer:
     """Visualize fires from both Sentinel-2 and Sentinel-3."""
     
-    # Portugal bounds for map
+    # Portugal bounds for map display
     IBERIA_BOUNDS = {
         'lon_min': -10.5, 'lon_max': -5.5,
         'lat_min': 36.5, 'lat_max': 42.5
+    }
+    
+    # Portugal bounds for filtering (tighter, excludes most of Spain)
+    PORTUGAL_BOUNDS = {
+        'lon_min': -9.5, 'lon_max': -6.2,
+        'lat_min': 36.95, 'lat_max': 42.15
     }
     
     def __init__(self, config_path: str = "ml/configs/config.yaml"):
@@ -51,9 +57,16 @@ class DualSatelliteVisualizer:
         self.output_dir = Path("data/samples/dual_satellite")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Band names
-        self.s2_bands = ['Red (B04)', 'NIR (B08)', 'SWIR1 (B11)', 'SWIR2 (B12)']
+        # Band names for new 6-band format: B02, B03, B04, B08, B11, B12
+        # Legacy 4-band format: B04, B08, B11, B12
+        self.s2_bands_new = ['Blue (B02)', 'Green (B03)', 'Red (B04)', 'NIR (B08)', 'SWIR1 (B11)', 'SWIR2 (B12)']
+        self.s2_bands_legacy = ['Red (B04)', 'NIR (B08)', 'SWIR1 (B11)', 'SWIR2 (B12)']
         self.s3_bands = ['F1 (3.74um)', 'F2 (10.85um)', 'F1-F2 Diff', 'Thermal Composite']
+    
+    def is_in_portugal(self, lat: float, lon: float) -> bool:
+        """Check if coordinates are within Portugal bounds."""
+        return (self.PORTUGAL_BOUNDS['lat_min'] <= lat <= self.PORTUGAL_BOUNDS['lat_max'] and
+                self.PORTUGAL_BOUNDS['lon_min'] <= lon <= self.PORTUGAL_BOUNDS['lon_max'])
     
     def normalize(self, data: np.ndarray, pct: int = 98) -> np.ndarray:
         """Normalize array for display."""
@@ -65,9 +78,45 @@ class DualSatelliteVisualizer:
             return np.full_like(data, 0.5, dtype=float)
         return np.clip((data - p_low) / (p_high - p_low), 0, 1)
     
+    def find_hotspot(self, band_data: np.ndarray, search_radius: int = None) -> tuple:
+        """
+        Find the hottest pixel (brightest spot) in a thermal/SWIR band.
+        
+        Args:
+            band_data: 2D array of band values
+            search_radius: Optional radius from center to search (None = entire tile)
+            
+        Returns:
+            (row, col) of the hottest pixel
+        """
+        h, w = band_data.shape
+        center_row, center_col = h // 2, w // 2
+        
+        if search_radius is not None:
+            y, x = np.ogrid[:h, :w]
+            dist_from_center = np.sqrt((y - center_row)**2 + (x - center_col)**2)
+            mask = dist_from_center <= search_radius
+            search_data = np.where(mask, band_data, -np.inf)
+        else:
+            search_data = band_data
+        
+        search_data = np.where(np.isfinite(search_data), search_data, -np.inf)
+        
+        if np.all(search_data == -np.inf):
+            return center_row, center_col
+        
+        max_idx = np.argmax(search_data)
+        row, col = np.unravel_index(max_idx, search_data.shape)
+        
+        return int(row), int(col)
+    
     def find_dual_satellite_fires(self) -> List[Dict]:
         """
         Find fires that have tiles from BOTH Sentinel-2 and Sentinel-3.
+        
+        Filters to only include fires:
+        1. With valid coordinates
+        2. Located within Portugal bounds
         
         Returns list of dicts with s2_tile_path, s3_tile_path, fire_id, coords
         """
@@ -109,17 +158,44 @@ class DualSatelliteVisualizer:
                 else:
                     fire_tiles[fire_id]['s3'].append(entry)
         
-        # Find fires with both
+        # Find fires with both - prioritize those with valid Portugal coordinates
         dual_fires = []
+        skipped_no_coords = 0
+        skipped_outside_portugal = 0
+        
         for fire_id, tiles in fire_tiles.items():
             if tiles['s2'] and tiles['s3']:
+                # Try to get coordinates from either S2 or S3 tile data
+                coords = None
+                for tile in tiles['s2'] + tiles['s3']:
+                    data = tile['data']
+                    if 'tile_center_lat' in data and 'tile_center_lon' in data:
+                        coords = (data['tile_center_lat'], data['tile_center_lon'])
+                        break
+                
+                # Skip samples without coordinates
+                if coords is None:
+                    skipped_no_coords += 1
+                    continue
+                
+                # Check if within Portugal bounds
+                lat, lon = coords
+                if not self.is_in_portugal(lat, lon):
+                    skipped_outside_portugal += 1
+                    continue
+                
                 dual_fires.append({
                     'fire_id': fire_id,
                     's2_tile': tiles['s2'][0],  # Take first S2 tile
                     's3_tile': tiles['s3'][0],  # Take first S3 tile
+                    'coords': coords
                 })
         
-        logger.info(f"Found {len(dual_fires)} fires with both S2 and S3 tiles")
+        logger.info(f"Found {len(dual_fires)} fires with both S2 and S3 tiles in Portugal")
+        if skipped_no_coords > 0:
+            logger.warning(f"Skipped {skipped_no_coords} fires without coordinates")
+        if skipped_outside_portugal > 0:
+            logger.info(f"Skipped {skipped_outside_portugal} fires outside Portugal")
         return dual_fires
     
     def draw_portugal(self, ax):
@@ -140,10 +216,10 @@ class DualSatelliteVisualizer:
         """
         Create dual-satellite visualization for one fire.
         
-        Layout:
-        - Row 1: S2 bands (4 panels)
+        NEW Layout with Split View (supports 6-band and legacy 4-band tiles):
+        - Row 1: True Color (or Red band) vs Fire-Enhanced False Color
         - Row 2: S3 thermal views (4 panels)
-        - Row 3: S2 composite, S3 composite, Location map
+        - Row 3: Individual bands + Location map
         """
         s2_info = fire_data['s2_tile']
         s3_info = fire_data['s3_tile']
@@ -153,110 +229,142 @@ class DualSatelliteVisualizer:
         s2_tile = np.load(s2_info['tile_path'])
         s3_tile = np.load(s3_info['tile_path'])
         
-        # Get fire pixel locations
-        s2_data = s2_info['data']
-        s3_data = s3_info['data']
+        # Detect tile format
+        has_rgb = s2_tile.shape[0] >= 6
+        if has_rgb:
+            b02_idx, b03_idx, b04_idx, b08_idx, b11_idx, b12_idx = 0, 1, 2, 3, 4, 5
+            s2_bands = self.s2_bands_new
+        else:
+            b04_idx, b08_idx, b11_idx, b12_idx = 0, 1, 2, 3
+            b02_idx, b03_idx = None, None
+            s2_bands = self.s2_bands_legacy
         
-        s2_fire_pixel = None
-        if 'fire_pixel_row' in s2_data and 'fire_pixel_col' in s2_data:
-            s2_fire_pixel = (s2_data['fire_pixel_row'], s2_data['fire_pixel_col'])
+        # Get fire pixel locations - UNIFIED DETECTION for ALL panels
+        # Use SWIR2 (B12) as the most reliable fire indicator
+        tile_size = s2_tile.shape[1]
+        search_radius = tile_size // 2  # Search entire tile
         
-        s3_fire_pixel = None
-        if 'fire_pixel_row' in s3_data and 'fire_pixel_col' in s3_data:
-            s3_fire_pixel = (s3_data['fire_pixel_row'], s3_data['fire_pixel_col'])
+        # Detect hottest pixel from SWIR2 - this is the PRIMARY fire position
+        fire_pos = self.find_hotspot(s2_tile[b12_idx], search_radius=search_radius)
         
-        # Get coordinates
-        coords = None
-        if 'tile_center_lat' in s2_data:
-            coords = (s2_data['tile_center_lat'], s2_data['tile_center_lon'])
-        elif 'tile_center_lat' in s3_data:
-            coords = (s3_data['tile_center_lat'], s3_data['tile_center_lon'])
+        # Use same position for both S2 and S3 for visual consistency
+        s2_fire_pixel = fire_pos
+        s3_fire_pixel = fire_pos  # Same position - same geographic coordinates
         
-        # Create figure
-        fig = plt.figure(figsize=(18, 16))
-        gs = GridSpec(3, 4, figure=fig, height_ratios=[1, 1, 1.2],
-                     hspace=0.3, wspace=0.15)
+        # Get coordinates - use pre-fetched coords if available
+        coords = fire_data.get('coords', None)
+        if coords is None:
+            s2_data = s2_info['data']
+            s3_data = s3_info['data']
+            if 'tile_center_lat' in s2_data:
+                coords = (s2_data['tile_center_lat'], s2_data['tile_center_lon'])
+            elif 'tile_center_lat' in s3_data:
+                coords = (s3_data['tile_center_lat'], s3_data['tile_center_lon'])
         
-        # ===== ROW 1: Sentinel-2 Bands =====
-        for i in range(4):
-            ax = fig.add_subplot(gs[0, i])
-            if i < s2_tile.shape[0]:
-                band = self.normalize(s2_tile[i])
-                ax.imshow(band, cmap='gray')
-                ax.set_title(f'S2: {self.s2_bands[i]}', fontsize=10, fontweight='bold')
-                if s2_fire_pixel:
-                    ax.add_patch(Circle((s2_fire_pixel[1], s2_fire_pixel[0]), 
-                                       radius=8, color='red', fill=False, linewidth=2))
-            ax.axis('off')
+        # Create figure with new split view layout
+        fig = plt.figure(figsize=(20, 16))
+        gs = GridSpec(3, 4, figure=fig, height_ratios=[1.3, 1, 1],
+                     hspace=0.25, wspace=0.15)
+        
+        # ===== ROW 1: SPLIT VIEW - True Color vs Fire Enhanced =====
+        
+        # Left: True Color RGB (or Red band for legacy tiles)
+        ax_true = fig.add_subplot(gs[0, 0:2])
+        if has_rgb:
+            true_color = np.stack([
+                self.normalize(s2_tile[b04_idx], 98),  # Red
+                self.normalize(s2_tile[b03_idx], 98),  # Green
+                self.normalize(s2_tile[b02_idx], 98)   # Blue
+            ], axis=-1)
+            true_color = np.clip(true_color * 1.2, 0, 1)  # Boost saturation
+            ax_true.imshow(true_color)
+            ax_true.set_title('TRUE COLOR (Natural View)\nRed-Green-Blue (B04-B03-B02)', 
+                            fontsize=12, fontweight='bold', color='darkgreen')
+        else:
+            ax_true.imshow(self.normalize(s2_tile[b04_idx]), cmap='gray')
+            ax_true.set_title('RED BAND (B04)\n(RGB bands not available)', 
+                            fontsize=12, fontweight='bold', color='gray')
+        
+        if s2_fire_pixel:
+            ax_true.add_patch(Circle((s2_fire_pixel[1], s2_fire_pixel[0]),
+                                    radius=12, color='red', fill=False, linewidth=3))
+            ax_true.annotate('FIRE', (s2_fire_pixel[1], s2_fire_pixel[0] - 20),
+                            color='red', fontsize=11, fontweight='bold',
+                            ha='center', bbox=dict(facecolor='white', alpha=0.8, edgecolor='red'))
+        ax_true.axis('off')
+        
+        # Right: Fire-Enhanced False Color (SWIR2-NIR-Red)
+        ax_fire = fig.add_subplot(gs[0, 2:4])
+        false_color = np.stack([
+            self.normalize(s2_tile[b12_idx], 98),  # SWIR2 -> R (fires bright)
+            self.normalize(s2_tile[b08_idx], 98),  # NIR -> G (vegetation)
+            self.normalize(s2_tile[b04_idx], 98)   # Red -> B
+        ], axis=-1)
+        ax_fire.imshow(false_color)
+        ax_fire.set_title('FIRE-ENHANCED (Active Fires = Bright Red/White)\nSWIR2-NIR-Red (B12-B08-B04)', 
+                        fontsize=12, fontweight='bold', color='darkred')
+        
+        if s2_fire_pixel:
+            ax_fire.add_patch(Circle((s2_fire_pixel[1], s2_fire_pixel[0]),
+                                    radius=12, color='lime', fill=False, linewidth=3))
+            ax_fire.annotate('FIRE', (s2_fire_pixel[1], s2_fire_pixel[0] - 20),
+                            color='lime', fontsize=11, fontweight='bold',
+                            ha='center', bbox=dict(facecolor='black', alpha=0.7))
+        ax_fire.axis('off')
+        
+        # Row 1 title
+        fig.text(0.5, 0.98, 'LEFT: Natural view (how humans see) | RIGHT: Fire detection view (fires glow bright)',
+                fontsize=10, ha='center', style='italic', alpha=0.7)
         
         # ===== ROW 2: Sentinel-3 Thermal =====
+        s3_labels = ['F1 Thermal (3.74um)\nActive Fire Detection', 
+                    'F2 Thermal (10.85um)\nBackground Temp', 
+                    'F1-F2 Difference\nFire Anomaly', 
+                    'Thermal Composite\nFires = Pink/White']
+        
         for i in range(4):
             ax = fig.add_subplot(gs[1, i])
             
             if i == 0 and s3_tile.shape[0] >= 3:
-                # F1 thermal
                 f1 = self.normalize(s3_tile[2], pct=99)
                 ax.imshow(f1, cmap='inferno')
-                ax.set_title('S3: F1 (3.74um)', fontsize=10, fontweight='bold')
             elif i == 1 and s3_tile.shape[0] >= 4:
-                # F2 thermal
                 f2 = self.normalize(s3_tile[3], pct=99)
                 ax.imshow(f2, cmap='inferno')
-                ax.set_title('S3: F2 (10.85um)', fontsize=10, fontweight='bold')
             elif i == 2 and s3_tile.shape[0] >= 4:
-                # F1-F2 difference
                 diff = s3_tile[2] - s3_tile[3]
                 diff_norm = self.normalize(diff)
                 ax.imshow(diff_norm, cmap='RdYlBu_r')
-                ax.set_title('S3: F1-F2 (Fire Anomaly)', fontsize=10, fontweight='bold')
             elif i == 3 and s3_tile.shape[0] >= 4:
-                # Composite
                 f1_n = self.normalize(s3_tile[2], pct=99)
                 f2_n = self.normalize(s3_tile[3], pct=99)
                 composite = np.stack([f1_n, f2_n, f1_n * 0.5], axis=-1)
                 ax.imshow(composite)
-                ax.set_title('S3: Thermal Composite', fontsize=10, fontweight='bold')
             
+            ax.set_title(s3_labels[i], fontsize=9, fontweight='bold')
             if s3_fire_pixel:
                 ax.add_patch(Circle((s3_fire_pixel[1], s3_fire_pixel[0]),
                                    radius=8, color='cyan', fill=False, linewidth=2))
             ax.axis('off')
         
-        # ===== ROW 3: Composites + Map =====
+        fig.text(0.02, 0.62, 'SENTINEL-3 (Thermal)', fontsize=11, fontweight='bold', color='darkred')
         
-        # S2 False Color
-        ax_s2 = fig.add_subplot(gs[2, 0:2])
-        if s2_tile.shape[0] >= 4:
-            false_color = np.stack([
-                self.normalize(s2_tile[3]),  # SWIR2 -> R
-                self.normalize(s2_tile[1]),  # NIR -> G
-                self.normalize(s2_tile[0])   # Red -> B
-            ], axis=-1)
-            ax_s2.imshow(false_color)
-            ax_s2.set_title('Sentinel-2 False Color\n(SWIR2-NIR-Red: Fires=red/white)', 
-                           fontsize=11, fontweight='bold')
+        # ===== ROW 3: Individual S2 Bands + Map =====
+        s2_display_bands = [
+            (b08_idx, 'NIR (B08)\nVegetation=Bright', 'gray'),
+            (b11_idx, 'SWIR1 (B11)\nMoisture/Burns', 'gray'),
+            (b12_idx, 'SWIR2 (B12)\nACTIVE FIRES=BRIGHT', 'hot')
+        ]
+        
+        for i, (band_idx, label, cmap) in enumerate(s2_display_bands):
+            ax = fig.add_subplot(gs[2, i])
+            ax.imshow(self.normalize(s2_tile[band_idx]), cmap=cmap)
+            ax.set_title(label, fontsize=9, fontweight='bold')
             if s2_fire_pixel:
-                ax_s2.add_patch(Circle((s2_fire_pixel[1], s2_fire_pixel[0]),
-                                      radius=12, color='lime', fill=False, linewidth=3))
-                ax_s2.annotate('FIRE', (s2_fire_pixel[1], s2_fire_pixel[0] - 20),
-                              color='lime', fontsize=10, fontweight='bold',
-                              ha='center', bbox=dict(facecolor='black', alpha=0.7))
-        ax_s2.axis('off')
-        
-        # S3 Thermal view
-        ax_s3 = fig.add_subplot(gs[2, 2])
-        if s3_tile.shape[0] >= 3:
-            thermal = self.normalize(s3_tile[2], pct=99)
-            ax_s3.imshow(thermal, cmap='inferno')
-            ax_s3.set_title('Sentinel-3 F1 Thermal\n(Active fires=bright)', 
-                           fontsize=11, fontweight='bold')
-            if s3_fire_pixel:
-                ax_s3.add_patch(Circle((s3_fire_pixel[1], s3_fire_pixel[0]),
-                                      radius=12, color='cyan', fill=False, linewidth=3))
-                ax_s3.annotate('FIRE', (s3_fire_pixel[1], s3_fire_pixel[0] - 20),
-                              color='cyan', fontsize=10, fontweight='bold',
-                              ha='center', bbox=dict(facecolor='black', alpha=0.7))
-        ax_s3.axis('off')
+                color = 'cyan' if i == 2 else 'red'
+                ax.add_patch(Circle((s2_fire_pixel[1], s2_fire_pixel[0]),
+                                   radius=8, color=color, fill=False, linewidth=2))
+            ax.axis('off')
         
         # Location Map
         ax_map = fig.add_subplot(gs[2, 3])
@@ -269,16 +377,17 @@ class DualSatelliteVisualizer:
         if coords:
             lat, lon = coords
             ax_map.plot(lon, lat, 'r*', markersize=15, markeredgecolor='black')
-            ax_map.set_title(f'Location\n{lat:.3f}N, {abs(lon):.3f}W', 
+            ax_map.set_title(f'Portugal\n{lat:.3f}N, {abs(lon):.3f}W', 
                            fontsize=10, fontweight='bold')
         else:
-            ax_map.set_title('Location\n(coords unavailable)', fontsize=10)
-        ax_map.set_xlabel('Lon', fontsize=8)
-        ax_map.set_ylabel('Lat', fontsize=8)
+            ax_map.set_title('Portugal\n(coords unavailable)', fontsize=10)
+        ax_map.set_xlabel('Longitude', fontsize=8)
+        ax_map.set_ylabel('Latitude', fontsize=8)
+        ax_map.tick_params(labelsize=7)
         
         # Overall title
-        fig.suptitle(f'DUAL SATELLITE VIEW: {fire_id}', 
-                    fontsize=14, fontweight='bold', color='darkred', y=0.98)
+        fig.suptitle(f'DUAL SATELLITE FIRE VIEW: {fire_id}', 
+                    fontsize=16, fontweight='bold', color='darkred', y=1.0)
         
         # Save
         plt.savefig(output_path, dpi=120, bbox_inches='tight', facecolor='white')

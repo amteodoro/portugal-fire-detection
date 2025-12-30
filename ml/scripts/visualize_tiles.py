@@ -88,6 +88,38 @@ class TileVisualizer:
         normalized = np.clip((band_data - p_low) / (p_high - p_low), 0, 1)
         return normalized
     
+    def find_hotspot(self, band_data: np.ndarray, search_radius: int = None) -> tuple:
+        """
+        Find the hottest pixel (brightest spot) in a thermal/SWIR band.
+        
+        Args:
+            band_data: 2D array of band values
+            search_radius: Optional radius from center to search (None = entire tile)
+            
+        Returns:
+            (row, col) of the hottest pixel
+        """
+        h, w = band_data.shape
+        center_row, center_col = h // 2, w // 2
+        
+        if search_radius is not None:
+            y, x = np.ogrid[:h, :w]
+            dist_from_center = np.sqrt((y - center_row)**2 + (x - center_col)**2)
+            mask = dist_from_center <= search_radius
+            search_data = np.where(mask, band_data, -np.inf)
+        else:
+            search_data = band_data
+        
+        search_data = np.where(np.isfinite(search_data), search_data, -np.inf)
+        
+        if np.all(search_data == -np.inf):
+            return center_row, center_col
+        
+        max_idx = np.argmax(search_data)
+        row, col = np.unravel_index(max_idx, search_data.shape)
+        
+        return int(row), int(col)
+    
     def create_false_color(self, tile: np.ndarray) -> np.ndarray:
         """
         Create false color composite (SWIR2-NIR-Red) for fire detection.
@@ -212,13 +244,19 @@ class TileVisualizer:
             elif label_data.get('fire_id'):
                 tile_coords = self.parse_fire_coords(label_data['fire_id'])
         
-        # Get fire pixel location within tile
+        # Get fire pixel location - DYNAMIC DETECTION based on actual hotspots
+        # Use the most reliable fire band: SWIR2 (B12) for S2, F1 for S3
         fire_pixel = None
-        if label_data:
-            fire_row = label_data.get('fire_pixel_row')
-            fire_col = label_data.get('fire_pixel_col')
-            if fire_row is not None and fire_col is not None:
-                fire_pixel = (fire_row, fire_col)
+        if label == 1:  # Only detect for fire samples
+            tile_size = tile.shape[1]
+            search_radius = tile_size // 2  # Search entire tile
+            
+            if is_s3 and tile.shape[0] >= 3:
+                # S3: Use F1 thermal band (index 2)
+                fire_pixel = self.find_hotspot(tile[2], search_radius=search_radius)
+            elif tile.shape[0] >= 4:
+                # S2: Use SWIR2 band (index 3)
+                fire_pixel = self.find_hotspot(tile[3], search_radius=search_radius)
         
         # Create figure with custom grid
         # 3 rows: bands (4 cols), composites (2 cols), map (1 wide)
