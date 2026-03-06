@@ -61,17 +61,29 @@ let fireClusterIndex = null;
 let clusterMarkers = [];
 let _mlPopupCounter = 0;
 
-// Status tracking
+// Fire severity colors (mirror CSS tokens --fire-high / --fire-medium / --fire-low)
+const FIRE_HIGH_COLOR   = 'hsl(0, 82%, 52%)';
+const FIRE_MEDIUM_COLOR = 'hsl(25, 90%, 46%)';
+const FIRE_LOW_COLOR    = 'hsl(45, 92%, 40%)';
+
+function fireSeverityColor(conf) {
+  return conf >= 80 ? FIRE_HIGH_COLOR : conf >= 50 ? FIRE_MEDIUM_COLOR : FIRE_LOW_COLOR;
+}
+
+// Status tracking — oldest message at top, newest at bottom (H8)
 function updateStatus(message, type = 'info') {
   const statusBox = document.querySelector('#statusMessages');
   const timestamp = new Date().toLocaleTimeString();
   const className = type === 'success' ? 'success' : type === 'warning' ? 'warning' : type === 'error' ? 'error' : '';
-  statusBox.innerHTML = `<div class="${className}">[${timestamp}] ${message}</div>` + statusBox.innerHTML;
+  const div = document.createElement('div');
+  if (className) div.className = className;
+  div.textContent = `[${timestamp}] ${message}`;
+  statusBox.appendChild(div);
   // Keep only last 5 messages
-  const messages = statusBox.querySelectorAll('div');
-  if (messages.length > 5) {
-    messages[messages.length - 1].remove();
+  while (statusBox.children.length > 5) {
+    statusBox.removeChild(statusBox.firstChild);
   }
+  statusBox.scrollTop = statusBox.scrollHeight;
   console.log(`[${type.toUpperCase()}] ${message}`);
 }
 
@@ -114,23 +126,23 @@ async function loadFIRMS(product, layer, days = 1, bbox = null) {
         const [lon, lat] = f.geometry.coordinates;
         const conf = f.properties.confidence ?? 0;
         const frp = f.properties.frp ?? 'N/A';
-        const color = conf >= 80 ? 'red' : conf >= 50 ? 'orange' : 'yellow';
-        
+        const color = fireSeverityColor(conf);
+
         const marker = L.circleMarker([lat, lon], {
           radius: 5,
-          color: color,
+          color,
           fillColor: color,
           fillOpacity: 0.7,
           weight: 2
         });
-        
+
         const popupId = `mlp${++_mlPopupCounter}`;
         marker.bindPopup(`
           <strong>${productName}</strong><br/>
           Time: ${f.properties.acq_time}<br/>
           Confidence: ${conf.toFixed(0)}%<br/>
           FRP: ${frp} MW
-          <hr style="margin:6px 0; border-color:#ddd"/>
+          <hr class="popup-divider"/>
           <div id="${popupId}">
             <button class="ml-btn"
               data-lat="${lat}" data-lon="${lon}"
@@ -145,7 +157,22 @@ async function loadFIRMS(product, layer, days = 1, bbox = null) {
             </button>
           </div>
         `);
-        
+
+        // C3: keyboard accessibility for fire markers
+        marker.on('add', () => {
+          const el = marker.getElement();
+          if (!el) return;
+          el.setAttribute('tabindex', '0');
+          el.setAttribute('role', 'button');
+          el.setAttribute('aria-label', `${productName} fire: confidence ${conf.toFixed(0)}%, FRP ${frp} MW`);
+          el.addEventListener('keydown', (evt) => {
+            if (evt.key === 'Enter' || evt.key === ' ') {
+              evt.preventDefault();
+              marker.openPopup();
+            }
+          });
+        });
+
         marker.addTo(layer);
       });
       
@@ -234,7 +261,7 @@ async function loadS3FirePixels() {
       const p = f.properties;
       const marker = L.marker([lat, lon], {
         icon: L.divIcon({
-          html: '<svg width="14" height="14" viewBox="0 0 14 14"><polygon points="7,1 13,5 11,13 3,13 1,5" fill="#e53935" stroke="#fff" stroke-width="1.5"/></svg>',
+          html: '<svg class="s3-marker" width="14" height="14" viewBox="0 0 14 14"><polygon class="s3-marker-poly" points="7,1 13,5 11,13 3,13 1,5"/></svg>',
           className: '', iconSize: [14, 14], iconAnchor: [7, 7],
         }),
       });
@@ -330,28 +357,42 @@ function renderClusters() {
       
       const marker = L.marker([lat, lon], {
         icon: L.divIcon({
-          html: `<div style="background-color: rgba(255, 87, 34, 0.8); width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 3px solid rgba(255, 255, 255, 0.8);">${count}</div>`,
+          html: `<div class="fire-cluster-icon" style="width:${size}px;height:${size}px;">${count}</div>`,
           className: 'fire-cluster-marker',
           iconSize: [size, size]
         })
       });
-      
-      // Zoom in on cluster click
+
+      // Zoom in on cluster click or keyboard activation
       marker.on('click', () => {
         const expansionZoom = fireClusterIndex.getClusterExpansionZoom(cluster.id);
         map.setView([lat, lon], expansionZoom);
       });
-      
+      marker.on('add', () => {
+        const el = marker.getElement();
+        if (!el) return;
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('role', 'button');
+        el.setAttribute('aria-label', `Fire cluster: ${count} detections`);
+        el.addEventListener('keydown', (evt) => {
+          if (evt.key === 'Enter' || evt.key === ' ') {
+            evt.preventDefault();
+            const expansionZoom = fireClusterIndex.getClusterExpansionZoom(cluster.id);
+            map.setView([lat, lon], expansionZoom);
+          }
+        });
+      });
+
       marker.addTo(heatmapLayer);
     } else {
       // Individual fire point
       const conf = props.confidence ?? 50;
       const frp = props.frp ?? 'N/A';
-      const color = conf >= 80 ? '#d32f2f' : conf >= 50 ? '#ff6f00' : '#ffa000';
-      
+      const color = fireSeverityColor(conf);
+
       const marker = L.circleMarker([lat, lon], {
         radius: 8,
-        color: color,
+        color,
         fillColor: color,
         fillOpacity: 0.7,
         weight: 2

@@ -685,6 +685,35 @@ a:focus-visible {
   }
 }
 
+/* ─── Map Marker Classes ────────────────────────────────────── */
+
+/* Fire cluster bubble (replaces inline rgba colors) */
+.fire-cluster-icon {
+  background: hsl(var(--fire-accent) / 0.85);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--fire-accent-foreground));
+  font-weight: 700;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  border: 3px solid hsl(0 0% 100% / 0.8);
+}
+
+/* Sentinel-3 pentagonal marker */
+.s3-marker-poly {
+  fill: hsl(var(--fire-high));
+  stroke: white;
+  stroke-width: 1.5;
+}
+
+/* Popup section divider (replaces border-color:#ddd) */
+.leaflet-popup-content .popup-divider {
+  margin: 6px 0;
+  border: none;
+  border-top: 1px solid hsl(var(--border));
+}
+
 /* ─── Reduced Motion ────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,
