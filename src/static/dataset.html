@@ -926,6 +926,7 @@
                 <h2 class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
                     <span>Training Tile Samples</span>
                     <span>
+                        <button id="btn-refresh-tiles" style="margin-right:0.5rem; width: auto;" onclick="loadTileSamples()">Refresh</button>
                         <button id="btn-new-samples" style="margin-right:0.5rem; width: auto;">New Sample Set</button>
                         <button id="btn-regenerate-samples" style="width: auto;">Regenerate Previews</button>
                     </span>
@@ -969,7 +970,7 @@
                             </div>
                             <div class="sample-image-container" id="carousel-image-container">
                                 <div class="loading-spinner" id="carousel-spinner"></div>
-                                <img id="carousel-image" src="" alt="Tile Sample" class="loading"
+                                <img id="carousel-image" src="" alt="Tile Sample" class="loading" loading="lazy"
                                     style="max-width: 100%; height: auto; border-radius: var(--radius); border: 2px solid hsl(var(--border)); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
                             </div>
                             <!-- Sample metadata -->
@@ -1005,6 +1006,7 @@
                 <h2 class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
                     <span>Dual-Satellite Fire View</span>
                     <span>
+                        <button id="btn-refresh-dual" style="margin-right:0.5rem; width: auto;" onclick="loadDualSamples()">Refresh</button>
                         <button id="btn-new-dual" style="margin-right:0.5rem; width: auto;">New Samples</button>
                         <button id="btn-regenerate-dual" style="width: auto;">Generate Dual View</button>
                     </span>
@@ -1047,7 +1049,7 @@
                             </div>
                             <div class="sample-image-container" id="dual-image-container">
                                 <div class="loading-spinner" id="dual-spinner"></div>
-                                <img id="dual-carousel-image" src="" alt="Dual Satellite Sample" class="loading"
+                                <img id="dual-carousel-image" src="" alt="Dual Satellite Sample" class="loading" loading="lazy"
                                     style="max-width: 100%; height: auto; border-radius: var(--radius); border: 2px solid hsl(var(--border));">
                             </div>
                         </div>
@@ -1112,7 +1114,7 @@
                             </div>
                             <div class="sample-image-container" id="colocated-image-container">
                                 <div class="loading-spinner" id="colocated-spinner"></div>
-                                <img id="colocated-carousel-image" src="" alt="Co-Located Sample" class="loading"
+                                <img id="colocated-carousel-image" src="" alt="Co-Located Sample" class="loading" loading="lazy"
                                     style="max-width: 100%; height: auto; border-radius: var(--radius); border: 2px solid hsl(var(--border));">
                             </div>
                         </div>
@@ -1154,7 +1156,7 @@
     <script>
         async function loadSummary() {
             try {
-                const response = await fetch('/api/dataset/summary');
+                const response = await fetch('/api/dataset/summary', { cache: 'no-store' });
                 if (!response.ok) throw new Error('Failed to load summary');
 
                 const data = await response.json();
@@ -1245,7 +1247,7 @@
                     const card = document.createElement('div');
                     card.className = 'sample-card';
                     card.innerHTML = `
-                        <img src="${sample.image_url}" alt="Scene ${sample.scene_id}" class="sample-image">
+                        <img src="${sample.image_url}" alt="Scene ${sample.scene_id}" class="sample-image" loading="lazy">
                         <div class="sample-info">
                             <div class="sample-date">${sample.date}</div>
                             <div class="sample-id">${sample.scene_id}</div>
@@ -1270,6 +1272,12 @@
                 const data = await response.json();
                 displaySummary(data);
 
+                // Also refresh all dynamic sections
+                loadTileSamples();
+                loadDualSamples();
+                loadColocatedSamples();
+                cacheStatsLoaded = false;
+
                 btn.textContent = 'Refreshed!';
                 setTimeout(() => {
                     btn.textContent = 'Refresh Data';
@@ -1292,7 +1300,7 @@
         // Function to load tile samples and setup carousel
         async function loadTileSamples() {
             try {
-                const response = await fetch('/api/dataset/tile-samples');
+                const response = await fetch('/api/dataset/tile-samples', { cache: 'no-store' });
                 if (!response.ok) throw new Error('Failed to load tile samples');
 
                 const data = await response.json();
@@ -1559,7 +1567,7 @@
 
         async function loadDualSamples() {
             try {
-                const response = await fetch('/api/dataset/dual-satellite-samples');
+                const response = await fetch('/api/dataset/dual-satellite-samples', { cache: 'no-store' });
                 if (!response.ok) throw new Error('Failed to load dual samples');
 
                 const data = await response.json();
@@ -1712,7 +1720,7 @@
 
         async function loadColocatedSamples() {
             try {
-                const response = await fetch('/api/dataset/colocated-samples');
+                const response = await fetch('/api/dataset/colocated-samples', { cache: 'no-store' });
                 if (!response.ok) throw new Error('Failed to load co-located samples');
 
                 const data = await response.json();
@@ -2254,10 +2262,12 @@
             const success = await handleStreamingRequest(`/api/dataset/prepare-splits?tile_size=${tileSize}`, {}, statusId, btn);
 
             if (success) {
-                // Refresh the summary and tile samples to show updated statistics
+                // Refresh summary, tile samples, and dual-satellite sections
                 setTimeout(() => {
                     loadSummary();
                     loadTileSamples();
+                    loadDualSamples();
+                    cacheStatsLoaded = false;  // Force cache stats to refresh next open
                 }, 1000);
             }
         });
@@ -2302,10 +2312,8 @@
                 toggleBtn.textContent = 'Hide Cache Stats';
                 refreshBtn.style.display = 'inline-block';
 
-                // Load stats if not already loaded
-                if (!cacheStatsLoaded) {
-                    loadCacheStats();
-                }
+                // Always reload stats when opening — ensures fresh data after pipeline runs
+                loadCacheStats();
             } else {
                 // Hide cache content
                 content.style.display = 'none';
@@ -2321,7 +2329,7 @@
             container.innerHTML = '<div style="text-align: center; padding: 2rem; color: hsl(var(--muted-foreground));">Loading cache statistics...</div>';
 
             try {
-                const response = await fetch('/api/dataset/cache/stats');
+                const response = await fetch('/api/dataset/cache/stats', { cache: 'no-store' });
                 if (!response.ok) throw new Error('Failed to load cache stats');
 
                 const data = await response.json();
