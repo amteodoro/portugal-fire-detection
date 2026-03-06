@@ -53,11 +53,13 @@ let viirsLayer = L.layerGroup().addTo(map);
 let modisLayer = L.layerGroup();
 let frpOverlay = null;
 let heatmapLayer = null;
+let s3Layer = L.layerGroup();
 let allFireData = []; // Store all fire data for heatmap and CSV
 
 // Supercluster for fire point clustering
 let fireClusterIndex = null;
 let clusterMarkers = [];
+let _mlPopupCounter = 0;
 
 // Status tracking
 function updateStatus(message, type = 'info') {
@@ -122,11 +124,26 @@ async function loadFIRMS(product, layer, days = 1, bbox = null) {
           weight: 2
         });
         
+        const popupId = `mlp${++_mlPopupCounter}`;
         marker.bindPopup(`
           <strong>${productName}</strong><br/>
           Time: ${f.properties.acq_time}<br/>
           Confidence: ${conf.toFixed(0)}%<br/>
           FRP: ${frp} MW
+          <hr style="margin:6px 0; border-color:#ddd"/>
+          <div id="${popupId}">
+            <button class="ml-btn"
+              data-lat="${lat}" data-lon="${lon}"
+              data-popup-id="${popupId}" data-live="false">
+              ML Check
+            </button>
+            <button class="ml-btn ml-btn-live"
+              data-lat="${lat}" data-lon="${lon}"
+              data-popup-id="${popupId}" data-live="true"
+              title="Fetch a fresh Sentinel-2 tile for this location">
+              Live ML Check
+            </button>
+          </div>
         `);
         
         marker.addTo(layer);
@@ -197,6 +214,51 @@ async function loadFRP() {
     updateStatus(`✗ Error loading Meteosat FRP: ${error.message}`, 'error');
     updateBadge('frpStatus', 0, 'ERR');
   }
+}
+
+async function loadS3FirePixels() {
+  try {
+    updateStatus('Loading Sentinel-3 fire pixels...');
+    updateBadge('s3Count', 0, '...');
+    const res = await fetch('/api/sentinel3/fire-pixels');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    s3Layer.clearLayers();
+    if (!data.features || data.features.length === 0) {
+      updateStatus('Sentinel-3: No fire pixels — <a href="/static/dataset.html">download via Dataset page</a>', 'warning');
+      updateBadge('s3Count', 0);
+      return;
+    }
+    data.features.forEach(f => {
+      const [lon, lat] = f.geometry.coordinates;
+      const p = f.properties;
+      const marker = L.marker([lat, lon], {
+        icon: L.divIcon({
+          html: '<svg width="14" height="14" viewBox="0 0 14 14"><polygon points="7,1 13,5 11,13 3,13 1,5" fill="#e53935" stroke="#fff" stroke-width="1.5"/></svg>',
+          className: '', iconSize: [14, 14], iconAnchor: [7, 7],
+        }),
+      });
+      marker.bindPopup(`<strong>Sentinel-3</strong><br/>Tile: ${p.tile_id || 'N/A'}<br/>Scene: ${p.scene_id || 'N/A'}<br/>Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)}`);
+      marker.addTo(s3Layer);
+    });
+    if (document.querySelector('#s3Toggle').checked) s3Layer.addTo(map);
+    updateStatus(`✓ Sentinel-3: ${data.features.length} fire pixel(s)`, 'success');
+    updateBadge('s3Count', data.features.length);
+  } catch (err) {
+    console.error('S3 fire pixels error:', err);
+    updateStatus(`✗ Sentinel-3 error: ${err.message}`, 'error');
+    updateBadge('s3Count', 0, 'ERR');
+  }
+}
+
+async function loadS3SceneCount() {
+  try {
+    const res = await fetch('/api/sentinel3/scenes');
+    if (!res.ok) return;
+    const scenes = await res.json();
+    const label = scenes.length === 0 ? '0 scenes' : `${scenes.length} scenes`;
+    if (!document.querySelector('#s3Toggle').checked) updateBadge('s3Count', scenes.length, label);
+  } catch (_) { /* non-critical */ }
 }
 
 // Update heatmap layer with Supercluster-based clustering
@@ -495,6 +557,30 @@ document.querySelector('#heatmapToggle').addEventListener('change', (e) => {
   }
 });
 
+document.querySelector('#s3Toggle').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    if (s3Layer.getLayers().length === 0) loadS3FirePixels();
+    else s3Layer.addTo(map);
+  } else {
+    map.removeLayer(s3Layer);
+  }
+});
+
+// Delegate ML button clicks via popupopen to avoid inline onclick (XSS fix)
+map.on('popupopen', function(e) {
+  const container = e.popup.getElement();
+  if (!container) return;
+  container.addEventListener('click', function(evt) {
+    const btn = evt.target.closest('[data-popup-id]');
+    if (!btn) return;
+    const lat = parseFloat(btn.dataset.lat);
+    const lon = parseFloat(btn.dataset.lon);
+    const popupId = btn.dataset.popupId;
+    const live = btn.dataset.live === 'true';
+    checkMLFire(lat, lon, popupId, live);
+  });
+});
+
 // Map move/zoom handlers to update clusters dynamically
 map.on('moveend', () => {
   if (fireClusterIndex && document.querySelector('#heatmapToggle').checked) {
@@ -578,7 +664,9 @@ async function initializeApp() {
     const initialDays = parseInt(document.querySelector('#fireDays').value);
     loadFIRMS('viirs', viirsLayer, initialDays, region.bbox);
     loadFRP();
-    
+    loadS3SceneCount();
+    loadMLStatus();
+
     // Add helpful info
     setTimeout(() => {
       updateStatus('Tip: Use the region selector to switch between different Portugal regions', 'info');
@@ -592,6 +680,105 @@ async function initializeApp() {
     const initialDays = parseInt(document.querySelector('#fireDays').value);
     loadFIRMS('viirs', viirsLayer, initialDays, region.bbox);
     loadFRP();
+  }
+}
+
+// Load ML model status into sidebar
+async function loadMLStatus() {
+  try {
+    const res = await fetch('/api/inference/status');
+    if (!res.ok) return;
+    const data = await res.json();
+    const card = document.getElementById('mlStatusCard');
+    const text = document.getElementById('mlStatusText');
+    if (!card || !text) return;
+    if (data.loaded) {
+      card.style.display = '';
+      // Also fetch test metrics if available
+      let metricsNote = '';
+      try {
+        const mr = await fetch('/api/inference/metrics');
+        if (mr.ok) {
+          const m = await mr.json();
+          metricsNote = `<br/>Test F1: <strong>${(m.f1 * 100).toFixed(1)}%</strong> &middot; AUC: ${(m.auc * 100).toFixed(1)}%`;
+        }
+      } catch (_) {}
+      text.innerHTML = `
+        <span class="ml-status-ok">&#10003; Model loaded</span><br/>
+        ${data.tiles_indexed} tiles indexed &middot; threshold ${(data.threshold * 100).toFixed(0)}%${metricsNote}<br/>
+        <span class="ml-status-hint">Click any fire marker &rarr; ML / Live ML Check</span>
+      `;
+    }
+  } catch (e) { /* model not available */ }
+}
+
+// ML fire inference check
+async function checkMLFire(lat, lon, popupId, live = false) {
+  const el = document.getElementById(popupId);
+  if (!el) return;
+  el.innerHTML = live
+    ? '<span class="ml-loading">Fetching live S2 tile… (~5–10s)</span>'
+    : '<span class="ml-loading">Running model...</span>';
+  try {
+    const res = await fetch('/api/inference/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat, lon, live }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      el.innerHTML = `<span class="ml-error">ML error: ${err.detail || res.status}</span>`;
+      return;
+    }
+    const data = await res.json();
+    const source = data.source || 'training_tile';
+    const pct = (data.fire_probability * 100).toFixed(1);
+    const severityClass = data.fire_probability >= 0.8 ? 'ml-fire-high'
+      : data.fire_probability >= 0.5 ? 'ml-fire-medium' : 'ml-fire-none';
+    const label = data.is_fire ? 'FIRE CONFIRMED' : 'No fire detected';
+    // Text label for colorblind users (shape/text, not color alone)
+    const severityText = data.fire_probability >= 0.8 ? '▲ High'
+      : data.fire_probability >= 0.5 ? '◆ Medium' : '● Low';
+
+    // Correct haversine-approximated distance (longitude degree varies with latitude)
+    let distKm = null;
+    if (data.tile_lat != null && data.tile_lon != null) {
+      const latRad = lat * Math.PI / 180;
+      const dlat = (data.tile_lat - lat) * 111;
+      const dlon = (data.tile_lon - lon) * 111 * Math.cos(latRad);
+      distKm = Math.sqrt(dlat * dlat + dlon * dlon);
+    }
+
+    let distNote = '';
+    if (source === 'live') {
+      const sceneDate = data.scene_date ? ` · scene ${data.scene_date}` : '';
+      distNote = `<br/><span class="ml-source-live">Live S2 tile${sceneDate}</span>`;
+    } else if (distKm !== null) {
+      const warnClass = distKm > 50 ? 'ml-dist-warn' : 'ml-dist-ok';
+      const warnIcon = distKm > 50 ? ' ⚠' : '';
+      distNote = `<br/><span class="${warnClass}">Nearest tile: ${distKm.toFixed(1)} km away${warnIcon}</span>`;
+      if (distKm > 50) {
+        distNote += `<br/><span class="ml-dist-warn">Result may be unreliable at this distance</span>`;
+      }
+    }
+
+    el.innerHTML = `
+      <div class="ml-result ${severityClass}">
+        <strong class="ml-label">ML: ${label}</strong>
+        <span class="ml-severity-text">${severityText}</span><br/>
+        Probability: <strong>${pct}%</strong>
+        <div class="ml-prob-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Fire probability ${pct}%">
+          <div class="ml-prob-bar-fill"></div>
+        </div>
+        ${distNote}
+      </div>`;
+    // Trigger CSS transition on the bar after DOM insertion
+    requestAnimationFrame(() => {
+      const fill = el.querySelector('.ml-prob-bar-fill');
+      if (fill) fill.style.width = `${pct}%`;
+    });
+  } catch (e) {
+    el.innerHTML = `<span class="ml-error">ML error: ${e.message}</span>`;
   }
 }
 

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -8,6 +8,8 @@
   <link rel="stylesheet" href="/static/css/styles.css"/>
 </head>
 <body>
+  <a href="#map" class="skip-link">Skip to map</a>
+  <h1 class="sr-only">Portugal Fire Detection</h1>
   <nav class="navbar">
     <div class="navbar-brand">Portugal Fire Detection</div>
     <ul class="navbar-nav">
@@ -41,23 +43,27 @@
       </div>
 
       <div class="card">
-        <h3>Active Fire Layers</h3>
+        <h2>Active Fire Layers</h2>
         <div class="layer-controls">
           <label>
-            <input type="checkbox" id="viirsToggle" checked/> 
+            <input type="checkbox" id="viirsToggle" checked/>
             VIIRS <span id="viirsCount" class="badge">-</span>
           </label>
           <label>
-            <input type="checkbox" id="modisToggle"/> 
+            <input type="checkbox" id="modisToggle"/>
             MODIS <span id="modisCount" class="badge">-</span>
           </label>
           <label>
-            <input type="checkbox" id="frpToggle"/> 
+            <input type="checkbox" id="frpToggle"/>
             Meteosat FRP <span id="frpStatus" class="badge">-</span>
           </label>
           <label>
-            <input type="checkbox" id="heatmapToggle"/> 
+            <input type="checkbox" id="heatmapToggle"/>
             Fire Heatmap <span id="heatmapCount" class="badge">-</span>
+          </label>
+          <label>
+            <input type="checkbox" id="s3Toggle"/>
+            Sentinel-3 Fire Pixels <span id="s3Count" class="badge">-</span>
           </label>
         </div>
       </div>
@@ -79,14 +85,14 @@
       </div>
 
       <div class="card">
-        <h3>Sentinel-2 Search</h3>
+        <h2>Sentinel-2 Search</h2>
         <div class="search-controls">
           <label>
-            Days 
+            Days
             <input type="number" id="s2Days" min="1" max="30" value="7" style="width: 60px;"/>
           </label>
           <label>
-            Cloud % 
+            Cloud %
             <input type="number" id="s2Cloud" min="0" max="100" value="20" style="width: 60px;"/>
           </label>
           <button id="s2SearchBtn">Search</button>
@@ -95,8 +101,13 @@
       </div>
 
       <div class="card">
-        <h4>Status</h4>
-        <div id="statusMessages">Ready to load data</div>
+        <h2>Status</h2>
+        <div id="statusMessages" role="status" aria-live="polite">Ready to load data</div>
+      </div>
+
+      <div class="card" id="mlStatusCard" style="display:none;">
+        <h2>ML Model</h2>
+        <div id="mlStatusText" class="ml-status-text"></div>
       </div>
 
       <p class="info">
@@ -104,8 +115,8 @@
       </p>
     </div>
   </div>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/supercluster@8.0.1/dist/supercluster.min.js"></script>
-  <script src="/static/js/app.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+  <script src="https://unpkg.com/supercluster@8.0.1/dist/supercluster.min.js" defer></script>
+  <script src="/static/js/app.js" defer></script>
 </body>
 </html>
