@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "feature/**", "fix/**", "chore/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    name: Run Tests (Docker)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ hashFiles('Dockerfile', 'pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: portugal-fire-detection:ci
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+      - name: Run tests
+        run: |
+          docker run --rm \
+            -e FIRMS_API_KEY="" \
+            -e SCHEDULER_ENABLED=false \
+            portugal-fire-detection:ci \
+            uv run pytest --tb=short -q
+
+  docker-smoke:
+    name: Docker Startup Smoke Test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: docker build -t portugal-fire-detection:smoke .
+
+      - name: Start container and health check
+        run: |
+          docker run --rm -d \
+            --name fire-smoke \
+            -p 8000:8000 \
+            -e FIRMS_API_KEY="" \
+            -e SCHEDULER_ENABLED=false \
+            portugal-fire-detection:smoke
+          # Wait for startup
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:8000/api/health; then
+              echo "Health check passed"
+              break
+            fi
+            echo "Waiting... ($i/15)"
+            sleep 2
+          done
+
+      - name: Stop container
+        if: always()
+        run: docker stop fire-smoke || true
