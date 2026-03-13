@@ -1,10 +1,34 @@
 services:
+  db:
+    image: postgis/postgis:16-3.4
+    platform: linux/arm64/v8
+    environment:
+      POSTGRES_DB: fire_detection
+      POSTGRES_USER: fire
+      POSTGRES_PASSWORD: fire
+    # Port not exposed to host — web container reaches db via internal Docker network.
+    # To connect from host tools (psql, DBeaver), uncomment and use port 5433:
+    # ports:
+    #   - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fire -d fire_detection"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   web:
     build: .
     ports:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://fire:fire@db:5432/fire_detection"
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./src:/app/src
       - ./data:/app/data
@@ -13,3 +37,6 @@ services:
     shm_size: '2gb'
     command: uv run uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
+
+volumes:
+  pgdata:

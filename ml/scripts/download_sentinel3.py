@@ -39,43 +39,28 @@ TOKEN_CACHE_FILE = Path.home() / ".copernicus_token_cache.json"
 
 class Sentinel3Downloader:
     """Download and manage Sentinel-3 SLSTR and OLCI imagery."""
-    
+
     def __init__(self, config_path: str = "ml/configs/config.yaml"):
         """Initialize downloader with configuration."""
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
-        
+
         self.sentinel3_dir = Path(self.config['data']['sentinel3_dir'])
         self.sentinel3_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Load OAuth client credentials
         self.client_id = os.getenv('COPERNICUS_CLIENT_ID')
         self.client_secret = os.getenv('COPERNICUS_CLIENT_SECRET')
-        
+
         if not self.client_id or not self.client_secret:
             logger.warning("COPERNICUS_CLIENT_ID and COPERNICUS_CLIENT_SECRET not set in .env")
             logger.warning("Downloads will fail. Register OAuth client at: https://dataspace.copernicus.eu/")
-        
-        # Initialize client
+
         self.client = httpx.AsyncClient(
             timeout=120.0,
             follow_redirects=True,
-            event_hooks={
-                "request": [self._auth_request_hook]
-            }
         )
         self.access_token = None
-        
-    async def _auth_request_hook(self, request: httpx.Request):
-        """Ensure Authorization header is attached on every request, including redirects.
-        This avoids losing the header on cross-host redirects (e.g., to download.dataspace.copernicus.eu)."""
-        try:
-            if self.access_token and "authorization" not in request.headers:
-                if request.url.host in {"catalogue.dataspace.copernicus.eu", "download.dataspace.copernicus.eu"}:
-                    request.headers["Authorization"] = f"Bearer {self.access_token}"
-        except Exception:
-            # Do not fail requests due to hook errors
-            pass
         
     def _load_cached_token(self) -> Optional[str]:
         """Load cached access token if it exists and is still valid."""
@@ -106,62 +91,205 @@ class Sentinel3Downloader:
     
     async def get_access_token(self) -> Optional[str]:
         """
-        Get OAuth2 access token using client credentials flow.
-        
+        Get OAuth2 access token for CDSE file downloads.
+
+        Priority order:
+        1. COPERNICUS_ACCESS_TOKEN env var (pre-issued token, skips OAuth entirely)
+        2. Cached token from a previous OAuth flow
+        3. Password grant with cdse-public client (required for file downloads)
+        4. client_credentials grant (fallback; works for APIs but NOT for downloads)
+
         Returns:
             Access token string, or None if authentication fails
         """
-        if not self.client_id or not self.client_secret:
-            logger.error("Client ID and Secret not configured")
-            return None
-        
-        # Try cached token first
+        # 1. Pre-issued token bypass
+        direct_token = os.getenv("COPERNICUS_ACCESS_TOKEN", "").strip()
+        if direct_token:
+            logger.info("Using COPERNICUS_ACCESS_TOKEN from environment")
+            return direct_token
+
+        # 2. Try cached token first
         cached_token = self._load_cached_token()
         if cached_token:
             logger.info("Using cached authentication token")
-            self.client.headers["Authorization"] = f"Bearer {cached_token}"
             return cached_token
-        
+
+        # 3. Password grant using cdse-public (the CDSE-recommended flow for downloads)
+        #    See: https://documentation.dataspace.copernicus.eu/APIs/Token.html
+        username = os.getenv("COPERNICUS_USERNAME", "").strip()
+        password = os.getenv("COPERNICUS_PASSWORD", "").strip()
+        if username and password:
+            try:
+                logger.info("Authenticating with Copernicus Data Space (password grant)...")
+                response = await self.client.post(
+                    TOKEN_URL,
+                    data={
+                        "client_id": "cdse-public",
+                        "username": username,
+                        "password": password,
+                        "grant_type": "password",
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+                response.raise_for_status()
+                token_data = response.json()
+                access_token = token_data.get("access_token")
+                expires_in = token_data.get("expires_in", 600)
+                if access_token:
+                    logger.info("✓ Successfully authenticated via password grant")
+                    self._save_token_cache(access_token, expires_in)
+                    return access_token
+                logger.error("No access token in password grant response")
+            except httpx.HTTPError as e:
+                logger.warning(f"Password grant failed: {e}")
+                try:
+                    logger.warning(f"Response: {response.json()}")
+                except Exception:
+                    pass
+
+        # 4. client_credentials fallback (note: CDSE download endpoint rejects these tokens)
+        if not self.client_id or not self.client_secret:
+            logger.error(
+                "No credentials configured for downloads. "
+                "Set COPERNICUS_USERNAME and COPERNICUS_PASSWORD in .env "
+                "(these are your https://dataspace.copernicus.eu/ login credentials). "
+                "Alternatively paste a pre-issued Bearer token into COPERNICUS_ACCESS_TOKEN."
+            )
+            return None
+
         try:
-            logger.info("Authenticating with Copernicus Data Space...")
-            
-            # OAuth2 client credentials flow
-            data = {
-                "grant_type": "client_credentials",
-                "client_id": self.client_id,
-                "client_secret": self.client_secret
-            }
-            
+            logger.info("Authenticating with Copernicus Data Space (client credentials)...")
             response = await self.client.post(
                 TOKEN_URL,
-                data=data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             response.raise_for_status()
-            
             token_data = response.json()
             access_token = token_data.get("access_token")
             expires_in = token_data.get("expires_in", 600)
-            
             if access_token:
-                logger.info("✓ Successfully authenticated")
-                self.client.headers["Authorization"] = f"Bearer {access_token}"
+                logger.warning(
+                    "Authenticated via client_credentials. "
+                    "Note: the CDSE download endpoint may reject this token with 401. "
+                    "Set COPERNICUS_USERNAME + COPERNICUS_PASSWORD in .env for reliable downloads."
+                )
                 self._save_token_cache(access_token, expires_in)
                 return access_token
-            else:
-                logger.error("No access token in response")
-                return None
-                
+            logger.error("No access token in client_credentials response")
+            return None
         except httpx.HTTPError as e:
             logger.error(f"Authentication failed: {e}")
             try:
                 error_detail = response.json()
                 logger.error(f"Error details: {error_detail}")
-            except:
+                if error_detail.get("error") == "invalid_client":
+                    logger.error(
+                        "The OAuth client credentials were rejected. "
+                        "Go to https://dataspace.copernicus.eu/ → User Settings → OAuth Clients "
+                        "to verify or recreate the client."
+                    )
+            except Exception:
                 pass
-            logger.error("Register OAuth client at: https://dataspace.copernicus.eu/")
             return None
     
+    # ------------------------------------------------------------------
+    # S3 download helpers (preferred over OAuth-based HTTP download)
+    # Credentials: https://eodata-s3keysmanager.dataspace.copernicus.eu/
+    # Set COPERNICUS_S3_ACCESS_KEY and COPERNICUS_S3_SECRET_KEY in .env
+    # ------------------------------------------------------------------
+
+    def _get_s3_resource(self):
+        """Return a boto3 S3 resource for the CDSE eodata bucket, or None."""
+        access_key = os.getenv('COPERNICUS_S3_ACCESS_KEY', '').strip()
+        secret_key = os.getenv('COPERNICUS_S3_SECRET_KEY', '').strip()
+        if not access_key or not secret_key:
+            return None
+        try:
+            import boto3
+            return boto3.resource(
+                's3',
+                endpoint_url='https://eodata.dataspace.copernicus.eu',
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                region_name='default',
+            )
+        except ImportError:
+            logger.warning("boto3 not installed; S3 download unavailable")
+            return None
+
+    _S3_INSTRUMENT_DIRS = {
+        'SL_1_RBT___': 'SLSTR/SL_1_RBT___',
+        'SL_2_FRP___': 'SLSTR/SL_2_FRP___',
+        'SL_2_LST___': 'SLSTR/SL_2_LST___',
+        'OL_1_EFR___': 'OLCI/OL_1_EFR___',
+        'OL_2_LFR___': 'OLCI/OL_2_LFR___',
+    }
+
+    def _s3_prefix(self, scene: Dict) -> Optional[str]:
+        """Return the S3 object prefix for a scene, or None if not derivable."""
+        props = scene.get('properties', {})
+        title = props.get('title', '').strip()
+        if not title:
+            return None
+        if not title.endswith('.SEN3'):
+            title = title + '.SEN3'
+
+        start_date = props.get('startDate', props.get('datetime', ''))
+        if not start_date:
+            return None
+        year, month, day = start_date[:10].split('-')
+
+        product_type = props.get('productType', '')
+        inst_dir = self._S3_INSTRUMENT_DIRS.get(product_type)
+        if not inst_dir:
+            logger.warning(f"No S3 path known for product type {product_type!r}")
+            return None
+
+        return f"Sentinel-3/{inst_dir}/{year}/{month}/{day}/{title}/"
+
+    def _sync_s3_download(self, prefix: str, output_dir: Path) -> bool:
+        """Synchronously download all objects under prefix to output_dir."""
+        s3 = self._get_s3_resource()
+        if s3 is None:
+            return False
+        try:
+            bucket = s3.Bucket('eodata')
+            objects = list(bucket.objects.filter(Prefix=prefix))
+            if not objects:
+                logger.warning(f"S3: no objects at s3://eodata/{prefix}")
+                return False
+
+            output_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"S3: downloading {len(objects)} files from s3://eodata/{prefix}")
+            for obj in objects:
+                filename = Path(obj.key).name
+                if not filename:
+                    continue
+                local_path = output_dir / filename
+                if local_path.exists():
+                    logger.debug(f"S3: skip {filename} (exists)")
+                    continue
+                logger.info(f"S3: {filename} ({obj.size / (1024*1024):.1f} MB)")
+                bucket.download_file(obj.key, str(local_path))
+            logger.info(f"S3 download complete → {output_dir}")
+            return True
+        except Exception as e:
+            logger.error(f"S3 download failed: {e}")
+            return False
+
+    async def _download_via_s3(self, scene: Dict, output_dir: Path) -> bool:
+        """Try to download a scene via S3. Non-blocking (runs in thread executor)."""
+        prefix = self._s3_prefix(scene)
+        if not prefix:
+            return False
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._sync_s3_download, prefix, output_dir)
+
     async def search_scenes(
         self,
         bbox: List[float],
@@ -258,9 +386,22 @@ class Sentinel3Downloader:
                 return False
         
         try:
-            logger.info(f"Downloading {band_name} from {asset_url[:80]}...")
-            
-            async with self.client.stream('GET', asset_url) as response:
+            # httpx strips the Authorization header from cross-host redirect legs
+            # (RFC-compliant behaviour; no hook or Auth class can reliably override it).
+            # The download URL redirects from catalogue.dataspace.copernicus.eu to
+            # download.dataspace.copernicus.eu, so we resolve the redirect manually:
+            # step 1 — HEAD request to get the Location URL without following it;
+            # step 2 — stream directly from that URL with the token header attached.
+            auth_header = {"Authorization": f"Bearer {self.access_token}"}
+            pre = await self.client.head(
+                asset_url, follow_redirects=False, headers=auth_header
+            )
+            download_url = pre.headers.get("location", asset_url) if pre.is_redirect else asset_url
+            logger.info(f"Downloading {band_name} from {download_url[:80]}...")
+
+            async with self.client.stream(
+                "GET", download_url, follow_redirects=False, headers=auth_header
+            ) as response:
                 response.raise_for_status()
                 
                 output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -298,7 +439,7 @@ class Sentinel3Downloader:
             logger.error(f"Error downloading {band_name}: {e}")
             if status == 401:
                 logger.error("Authentication failed. Token may have expired. Refreshing token and retrying once...")
-                # Clear cached token so next download will get a new one
+                # Clear cached token so next call fetches a fresh one
                 self.access_token = None
                 try:
                     if TOKEN_CACHE_FILE.exists():
@@ -306,8 +447,7 @@ class Sentinel3Downloader:
                 except Exception:
                     pass
                 if _retry:
-                    # Obtain a fresh token and retry once
-                    await self.get_access_token()
+                    self.access_token = await self.get_access_token()
                     return await self.download_band(asset_url, output_path, band_name, _retry=False)
             elif status == 403:
                 logger.error("Access forbidden. Check your OAuth client permissions.")
@@ -351,62 +491,55 @@ class Sentinel3Downloader:
         metadata_path = scene_dir / "metadata.json"
         with open(metadata_path, 'w') as f:
             json.dump(scene, f, indent=2)
-        
-        # OpenSearch format: download URL is in properties.services.download.url
-        # or in assets for STAC format
+
+        # Try S3 first — bypasses OAuth entirely
+        if await self._download_via_s3(scene, scene_dir):
+            logger.info(f"Successfully downloaded SLSTR scene {scene_id} via S3")
+            return scene_dir
+
+        # Fall back to HTTP download (requires valid user token)
+        logger.info(f"S3 unavailable, falling back to HTTP for SLSTR scene {scene_id}")
         download_url = None
-        
-        # Try OpenSearch format first
         services = scene_props.get('services', {})
         download_service = services.get('download', {})
         download_url = download_service.get('url')
-        
+
         if download_url:
-            # For OpenSearch, we get the full product ZIP
             logger.info(f"Downloading full SLSTR product from OpenSearch: {scene_id}")
             output_path = scene_dir / f"{scene_id}.zip"
             download_tasks = [self.download_band(download_url, output_path, "product")]
         else:
-            # Try STAC format with individual band assets
             assets = scene.get('assets', {})
             download_tasks = []
-            
             for band in bands:
-                # Try various naming conventions
                 possible_keys = [
                     band.lower(),
                     f"slstr_{band.lower()}",
                     f"{band.lower()}_radiance",
-                    f"{band.lower()}_bt"  # brightness temperature for thermal
+                    f"{band.lower()}_bt",
                 ]
-                
                 asset = None
                 for key in possible_keys:
                     if key in assets:
                         asset = assets[key]
                         break
-                
                 if asset:
                     asset_url = asset.get('href')
                     if asset_url:
-                        output_path = scene_dir / f"{band}.nc"  # NetCDF format
-                        download_tasks.append(
-                            self.download_band(asset_url, output_path, band)
-                        )
+                        output_path = scene_dir / f"{band}.nc"
+                        download_tasks.append(self.download_band(asset_url, output_path, band))
                 else:
                     logger.warning(f"Band {band} not found in scene {scene_id}")
-        
-        # Download all bands concurrently
+
         if download_tasks:
             results = await asyncio.gather(*download_tasks, return_exceptions=True)
-            
             if all(r is True for r in results):
                 logger.info(f"Successfully downloaded SLSTR scene {scene_id}")
                 return scene_dir
             else:
                 logger.warning(f"Some bands failed for SLSTR scene {scene_id}")
                 return None
-        
+
         return None
     
     async def download_olci_scene(
@@ -440,57 +573,54 @@ class Sentinel3Downloader:
         metadata_path = scene_dir / "metadata.json"
         with open(metadata_path, 'w') as f:
             json.dump(scene, f, indent=2)
-        
-        # Try OpenSearch format first
+
+        # Try S3 first — bypasses OAuth entirely
+        if await self._download_via_s3(scene, scene_dir):
+            logger.info(f"Successfully downloaded OLCI scene {scene_id} via S3")
+            return scene_dir
+
+        # Fall back to HTTP download
+        logger.info(f"S3 unavailable, falling back to HTTP for OLCI scene {scene_id}")
         download_url = None
         services = scene_props.get('services', {})
         download_service = services.get('download', {})
         download_url = download_service.get('url')
-        
+
         if download_url:
-            # For OpenSearch, we get the full product ZIP
             logger.info(f"Downloading full OLCI product from OpenSearch: {scene_id}")
             output_path = scene_dir / f"{scene_id}.zip"
             download_tasks = [self.download_band(download_url, output_path, "product")]
         else:
-            # Try STAC format with individual band assets
             assets = scene.get('assets', {})
             download_tasks = []
-            
             for band in bands:
                 possible_keys = [
                     band.lower(),
                     f"olci_{band.lower()}",
-                    f"{band.lower()}_radiance"
+                    f"{band.lower()}_radiance",
                 ]
-                
                 asset = None
                 for key in possible_keys:
                     if key in assets:
                         asset = assets[key]
                         break
-                
                 if asset:
                     asset_url = asset.get('href')
                     if asset_url:
                         output_path = scene_dir / f"{band}.nc"
-                        download_tasks.append(
-                            self.download_band(asset_url, output_path, band)
-                        )
+                        download_tasks.append(self.download_band(asset_url, output_path, band))
                 else:
                     logger.warning(f"Band {band} not found in scene {scene_id}")
-        
-        # Download all bands concurrently
+
         if download_tasks:
             results = await asyncio.gather(*download_tasks, return_exceptions=True)
-            
             if all(r is True for r in results):
                 logger.info(f"Successfully downloaded OLCI scene {scene_id}")
                 return scene_dir
             else:
                 logger.warning(f"Some bands failed for OLCI scene {scene_id}")
                 return None
-        
+
         return None
     
     async def download_scenes_batch(
@@ -565,7 +695,12 @@ class Sentinel3Downloader:
         self.access_token = await self.get_access_token()
         if not self.access_token:
             logger.error("Failed to authenticate. Cannot proceed with downloads.")
-            logger.error("Make sure COPERNICUS_CLIENT_ID and COPERNICUS_CLIENT_SECRET are set in .env")
+            logger.error(
+                "To fix this, go to https://dataspace.copernicus.eu/ → User Settings → "
+                "OAuth Clients and create a new OAuth client (or regenerate its secret). "
+                "Set COPERNICUS_CLIENT_ID and COPERNICUS_CLIENT_SECRET in .env, "
+                "or paste a pre-issued Bearer token into COPERNICUS_ACCESS_TOKEN."
+            )
             await self.client.aclose()
             return
         

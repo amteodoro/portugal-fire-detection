@@ -12,6 +12,7 @@ import json
 import sys
 import asyncio
 import shutil
+import re
 from typing import Dict, List, Optional, AsyncGenerator
 
 router = APIRouter()
@@ -45,7 +46,22 @@ async def get_dataset_summary() -> Dict:
         # Load existing summary
         with open(summary_path, 'r') as f:
             summary = json.load(f)
-    
+
+        # Validate: if summary claims tiles exist but the actual directories are empty,
+        # regenerate so the UI doesn't show stale "READY" status.
+        claimed_tiles = summary.get("processed", {}).get("total_tiles", 0)
+        if claimed_tiles > 0:
+            splits_dir = Path("ml/data/processed/splits")
+            actual_tiles = sum(
+                1 for f in splits_dir.rglob("*.npy") if f.exists()
+            ) if splits_dir.exists() else 0
+            if actual_tiles == 0:
+                try:
+                    from ml.data.summarize_dataset import generate_summary
+                    summary = generate_summary()
+                except Exception:
+                    pass  # Return stale summary rather than failing
+
     return summary
 
 
@@ -318,6 +334,9 @@ async def fetch_firms_data(request: FIRMSFetchRequest):
         ]
         
         if request.products:
+            for p in request.products:
+                if not re.match(r'^[A-Za-z0-9_\-]+$', p):
+                    raise HTTPException(status_code=400, detail=f"Invalid product name: {p}")
             cmd.extend(["--products"] + request.products)
         
         if request.region:
@@ -707,9 +726,13 @@ async def get_tile_samples() -> Dict:
     samples_info_path = samples_dir / "samples_info.json"
     
     if not samples_info_path.exists():
-        # Check if tiles exist - if so, we can generate samples
-        tiles_dir = Path("ml/data/tiles")  # Correct path from config
-        if tiles_dir.exists() and any(tiles_dir.glob("*.npy")):
+        # Check if tiles exist in tiles_dir or in processed splits
+        tiles_dir = Path("ml/data/tiles")
+        splits_dir = Path("ml/data/processed/splits")
+        has_tiles = (tiles_dir.exists() and any(tiles_dir.glob("*.npy"))) or (
+            splits_dir.exists() and any(f for f in splits_dir.rglob("*.npy") if f.exists())
+        )
+        if has_tiles:
             return {
                 "samples": [],
                 "message": "Tiles exist but visualizations not generated.",
@@ -752,9 +775,13 @@ async def generate_tile_samples(req: GenerateTileSamplesRequest):
         Server-Sent Events stream with progress
     """
     try:
-        # Check if tiles exist
-        tiles_dir = Path("ml/data/tiles")  # Correct path from config
-        if not tiles_dir.exists() or not any(tiles_dir.glob("*.npy")):
+        # Check if tiles exist in tiles_dir or in processed splits
+        tiles_dir = Path("ml/data/tiles")
+        splits_dir = Path("ml/data/processed/splits")
+        has_tiles = (tiles_dir.exists() and any(tiles_dir.glob("*.npy"))) or (
+            splits_dir.exists() and any(f for f in splits_dir.rglob("*.npy") if f.exists())
+        )
+        if not has_tiles:
             raise HTTPException(
                 status_code=404,
                 detail="No training tiles found. Run 'Prepare Training Dataset' first."

@@ -146,6 +146,14 @@ class DualSatelliteVisualizer:
             is_s2 = scene_id.startswith('S2')
             
             tile_path = self.tiles_dir / f"{lf.stem}.npy"
+            if not tile_path.exists():
+                # Fallback: search processed splits (symlinks to tiles)
+                splits_dir = Path("ml/data/processed/splits")
+                if splits_dir.exists():
+                    for candidate in splits_dir.rglob(f"{lf.stem}.npy"):
+                        if candidate.exists():
+                            tile_path = candidate
+                            break
             if tile_path.exists():
                 entry = {
                     'tile_path': tile_path,

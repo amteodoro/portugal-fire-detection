@@ -1,5 +1,4 @@
-/* ─── Google Fonts ─────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap');
+/* Google Fonts loaded via <link> in HTML head for non-blocking load */
 
 * {
   box-sizing: border-box;
@@ -37,6 +36,12 @@
   --fire-medium: 25 90% 46%;
   --fire-low: 45 92% 40%;
   --fire-none: 142 68% 34%;
+
+  /* Fire severity — OKLCH for perceptual uniformity */
+  --fire-high-color: oklch(51% 0.214 27);
+  --fire-medium-color: oklch(57% 0.175 47);
+  --fire-low-color: oklch(64% 0.148 87);
+  --fire-none-color: oklch(51% 0.144 148);
 
   /* Animation easing */
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
@@ -89,7 +94,6 @@ html, body {
 
 .navbar-brand {
   padding: 0 1.5rem;
-  font-size: 1rem;
   font-weight: 600;
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 1.125rem;
@@ -152,6 +156,54 @@ html, body {
   display: grid;
   grid-template-columns: 1fr 360px;
   overflow: hidden;
+  position: relative;
+  transition: grid-template-columns 0.3s var(--ease-out-quint);
+}
+
+#app.sidebar-collapsed {
+  grid-template-columns: 1fr 0px;
+}
+
+/* Sidebar collapse toggle — floats at the map/sidebar boundary */
+#sidebar-toggle {
+  position: absolute;
+  right: 360px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 500;
+  width: 20px;
+  height: 52px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-right: none;
+  border-radius: var(--radius) 0 0 var(--radius);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: hsl(var(--muted-foreground));
+  padding: 0;
+  margin: 0;
+  min-height: auto;
+  line-height: 1;
+  transition: right 0.3s var(--ease-out-quint), background 0.15s, color 0.15s;
+  box-shadow: -2px 0 6px hsl(var(--foreground) / 0.05);
+}
+
+#sidebar-toggle:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+}
+
+#app.sidebar-collapsed #sidebar-toggle {
+  right: 0;
+}
+
+@media (max-width: 900px) {
+  #sidebar-toggle { display: none; }
 }
 
 #map {
@@ -162,17 +214,25 @@ html, body {
 #sidebar {
   height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
   padding: 1.25rem;
   background: hsl(var(--background));
   border-left: 1px solid hsl(var(--border));
+  transition: padding 0.3s var(--ease-out-quint);
+}
+
+#app.sidebar-collapsed #sidebar {
+  padding: 0;
 }
 
 /* ─── Sidebar Typography ────────────────────────────────────── */
 #sidebar h2 {
   margin-top: 0;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-size: 0.8125rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: hsl(var(--muted-foreground));
 }
@@ -276,6 +336,27 @@ html, body {
   color: hsl(var(--muted-foreground));
 }
 
+/* ─── Config Grid (Region + Time merged card) ───────────────── */
+.config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.config-grid label strong {
+  font-size: 0.6875rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.06em;
+}
+
+/* ─── Status Icons ──────────────────────────────────────────── */
+.status-icon {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  margin-right: 0.25em;
+}
+
 /* ─── Search Controls ───────────────────────────────────────── */
 .search-controls {
   display: flex;
@@ -285,6 +366,10 @@ html, body {
 
 .search-controls label {
   margin: 0;
+}
+
+.input-narrow {
+  width: 4rem;
 }
 
 /* ─── Buttons ───────────────────────────────────────────────── */
@@ -498,7 +583,7 @@ label {
 
 .ml-btn-live {
   background: hsl(142 65% 26%);
-  color: #fff;
+  color: hsl(var(--primary-foreground));
 }
 
 .ml-btn-live:hover {
@@ -509,6 +594,14 @@ label {
   font-size: 11px;
   margin-top: 4px;
   line-height: 1.5;
+}
+
+/* Probability percentage — Barlow Condensed for data-dense readability */
+.ml-result .ml-pct {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .ml-result-label {
@@ -530,8 +623,10 @@ label {
 
 .ml-prob-bar-fill {
   height: 100%;
-  width: 0;
-  transition: width 0.65s var(--ease-out-quint);
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.65s var(--ease-out-quint);
 }
 
 .ml-fire-high .ml-prob-bar-fill { background: hsl(var(--fire-high)); }
@@ -584,6 +679,46 @@ label {
 .ml-source-live {
   font-size: 10px;
   color: hsl(var(--fire-none));
+}
+
+/* Spinner for live ML tile fetch */
+@keyframes ml-spin {
+  to { transform: rotate(360deg); }
+}
+.ml-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid hsl(var(--muted-foreground) / 0.3);
+  border-top-color: hsl(var(--muted-foreground));
+  border-radius: 50%;
+  animation: ml-spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+/* Status badge: "Preliminary" / "Live" */
+.ml-status-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 3px;
+}
+
+/* Pending live-fetch indicator below preliminary result */
+.ml-live-pending {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .ml-dist-ok {
@@ -640,7 +775,7 @@ a:focus-visible {
 
   #sidebar {
     height: auto;
-    max-height: 40vh;
+    max-height: 55vh;
     width: 100%;
     border-left: none;
     border-top: 1px solid hsl(var(--border));
@@ -700,10 +835,10 @@ a:focus-visible {
   border: 3px solid hsl(0 0% 100% / 0.8);
 }
 
-/* Sentinel-3 pentagonal marker */
+/* Sentinel-3 pentagonal marker — purple/magenta to distinguish from FIRMS red */
 .s3-marker-poly {
-  fill: hsl(var(--fire-high));
-  stroke: white;
+  fill: hsl(290 70% 55%);
+  stroke: hsl(0 0% 100% / 0.85);
   stroke-width: 1.5;
 }
 
@@ -712,6 +847,84 @@ a:focus-visible {
   margin: 6px 0;
   border: none;
   border-top: 1px solid hsl(var(--border));
+}
+
+/* ─── Sidebar Card Hierarchy ────────────────────────────────── */
+
+/* Fire Layers card — slightly elevated to signal primary control */
+#sidebar .card-fire-layers {
+  background: hsl(var(--muted));
+  border-left: 3px solid hsl(var(--fire-accent));
+}
+
+/* Status & ML cards — inline, no border frame */
+#sidebar .card-inline {
+  background: transparent;
+  border: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Attribution info separator */
+#sidebar > .info {
+  border-top: 1px solid hsl(var(--border));
+  padding-top: 0.75rem;
+  margin-top: 0;
+  opacity: 0.8;
+}
+
+/* ─── Dark Mode ─────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: 25 12% 8%;
+    --foreground: 40 15% 92%;
+    --card: 25 10% 11%;
+    --card-foreground: 40 15% 92%;
+    --popover: 25 10% 11%;
+    --popover-foreground: 40 15% 92%;
+    --primary: 40 20% 88%;
+    --primary-foreground: 25 12% 8%;
+    --secondary: 30 8% 18%;
+    --secondary-foreground: 40 15% 92%;
+    --muted: 30 8% 16%;
+    --muted-foreground: 30 6% 55%;
+    --accent: 30 8% 20%;
+    --accent-foreground: 40 15% 92%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 30 8% 22%;
+    --input: 30 8% 22%;
+    --ring: 28 80% 50%;
+    --fire-accent-muted: 28 60% 18%;
+  }
+}
+
+/* ─── AOI Panel ─────────────────────────────────────────────── */
+.aoi-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.aoi-name {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.aoi-email {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+}
+
+.aoi-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
 }
 
 /* ─── Reduced Motion ────────────────────────────────────────── */

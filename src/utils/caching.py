@@ -3,17 +3,26 @@ import time
 import os
 from cachetools import TTLCache
 
-memory_cache = TTLCache(maxsize=128, ttl=600)
+# Per-type memory caches with TTLs matched to each data source's freshness
+firms_cache = TTLCache(maxsize=64, ttl=900)      # matches FIRMS_TTL
+eumetsat_cache = TTLCache(maxsize=32, ttl=1800)  # matches EUMETSAT_TTL
+s2_cache = TTLCache(maxsize=32, ttl=86400)       # matches S2_TTL
+
+_CACHES = {
+    "firms": firms_cache,
+    "eumetsat": eumetsat_cache,
+    "s2": s2_cache,
+}
 
 
-def cache_get(key: str):
-    return memory_cache.get(key)
+def cache_get(key: str, cache_type: str = "firms"):
+    return _CACHES[cache_type].get(key)
 
 
-def cache_set(key: str, value, ttl: int | None = None):
-    # TTLCache.ttl is read-only, cannot be modified per-item
-    # All items use the cache's global TTL
-    memory_cache[key] = value
+def cache_set(key: str, value, ttl: int | None = None, cache_type: str = "firms"):
+    # TTLCache.ttl is read-only; all items in a cache share the cache's global TTL.
+    # The ttl parameter is accepted for API compatibility but ignored.
+    _CACHES[cache_type][key] = value
 
 
 def file_cache_path(dir_path: str, key: str) -> str:

@@ -228,9 +228,13 @@ def analyze_processed_tiles(processed_dir: Path) -> Dict:
                 no_fire_dir = split_dir / "no_fire"
                 
                 if fire_dir.exists():
-                    stats['splits'][split]['fire'] = len(list(fire_dir.glob("*.npy")))
+                    stats['splits'][split]['fire'] = sum(
+                        1 for f in fire_dir.glob("*.npy") if f.exists()
+                    )
                 if no_fire_dir.exists():
-                    stats['splits'][split]['no_fire'] = len(list(no_fire_dir.glob("*.npy")))
+                    stats['splits'][split]['no_fire'] = sum(
+                        1 for f in no_fire_dir.glob("*.npy") if f.exists()
+                    )
     
     # Total counts
     stats['fire_tiles'] = sum(s['fire'] for s in stats['splits'].values())
@@ -323,7 +327,11 @@ def generate_sample_images(
     """
     samples = []
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
+    # Remove old scene sample PNGs so stale URLs don't linger after scene changes
+    for old_png in output_dir.glob("sample_*.png"):
+        old_png.unlink(missing_ok=True)
+
     # Select representative scenes
     selected_scenes = scenes[:num_samples] if len(scenes) >= num_samples else scenes
     

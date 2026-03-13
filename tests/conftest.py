@@ -109,7 +109,7 @@ def mock_settings():
     settings.PORTUGAL_BBOX = "-9.5,36.8,-6.0,42.3"
     settings.STAC_CATALOG_URL = "https://earth-search.aws.element84.com/v1"
     settings.APP_NAME = "Portugal Fire Detection Test"
-    settings.CORS_ORIGINS = "*"
+    settings.CORS_ORIGINS = ""
     settings.SCHEDULER_ENABLED = False
     settings.TIMEZONE = "UTC"
     return settings
