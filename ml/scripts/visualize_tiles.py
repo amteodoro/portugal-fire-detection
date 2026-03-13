@@ -441,64 +441,191 @@ class TileVisualizer:
         
         logger.info(f"Saved visualization: {output_path.name}")
     
+    # Portugal mainland bounds (slightly tighter than bbox to exclude Spanish border areas)
+    PORTUGAL_LAT_MIN = 36.8
+    PORTUGAL_LAT_MAX = 42.3
+    PORTUGAL_LON_MIN = -9.5
+    PORTUGAL_LON_MAX = -6.19  # ~Portugal's eastern border with Spain
+
+    def parse_tile_location(self, tile_path: Path) -> Optional[Tuple[float, float]]:
+        """Parse (lat, lon) from a fire tile filename. Returns None for no-fire tiles."""
+        parts = tile_path.stem.split('_')
+        # Fire tile format: ..._{instrument}_{date}_{lat}_{lon}_{label}_{idx}
+        # Scan pairs of consecutive parts for valid (lat, lon)
+        for i in range(len(parts) - 1):
+            try:
+                lat = float(parts[i])
+                lon = float(parts[i + 1])
+                if 30 < lat < 50 and -15 < lon < 5:  # Iberian/nearby range
+                    return (lat, lon)
+            except ValueError:
+                continue
+        return None
+
+    def is_in_portugal(self, lat: float, lon: float) -> bool:
+        """Return True if coordinates fall within Portugal mainland bounds."""
+        return (self.PORTUGAL_LAT_MIN <= lat <= self.PORTUGAL_LAT_MAX and
+                self.PORTUGAL_LON_MIN <= lon <= self.PORTUGAL_LON_MAX)
+
+    def select_diverse_fire_tiles(self, tiles: List[Path], n: int) -> List[Path]:
+        """
+        Select n geographically diverse fire tiles, restricted to Portugal.
+
+        Uses a greedy max-spread algorithm: pick the first tile randomly, then
+        always choose the candidate whose minimum distance to all already-selected
+        tiles is the largest. This maximises geographic coverage.
+        """
+        import random
+
+        # Filter to Portugal-only tiles with parseable coordinates
+        located = []
+        for t in tiles:
+            loc = self.parse_tile_location(t)
+            if loc and self.is_in_portugal(*loc):
+                located.append((t, loc[0], loc[1]))
+
+        if not located:
+            logger.warning("No Portugal-only fire tiles found — using all fire tiles")
+            located = []
+            for t in tiles:
+                loc = self.parse_tile_location(t)
+                if loc:
+                    located.append((t, loc[0], loc[1]))
+
+        if not located:
+            return random.sample(tiles, min(n, len(tiles)))
+
+        random.shuffle(located)
+
+        # Prefer VIIRS over MODIS (higher spatial resolution)
+        located.sort(key=lambda x: (0 if 'VIIRS' in x[0].stem else 1))
+
+        selected = [located[0]]
+        remaining = located[1:]
+
+        while len(selected) < n and remaining:
+            best, best_score = None, -1
+            for candidate in remaining:
+                # Euclidean distance in degrees (good enough for selection)
+                min_dist = min(
+                    (candidate[1] - s[1]) ** 2 + (candidate[2] - s[2]) ** 2
+                    for s in selected
+                )
+                if min_dist > best_score:
+                    best_score = min_dist
+                    best = candidate
+            if best is None:
+                break
+            selected.append(best)
+            remaining.remove(best)
+
+        portugal_count = len(selected)
+        logger.info(f"Selected {portugal_count} geographically diverse Portugal fire tiles")
+        return [t for t, _, _ in selected]
+
+    def select_diverse_nofire_tiles(self, tiles: List[Path], n: int) -> List[Path]:
+        """
+        Select n no-fire tiles with scene diversity (one tile per unique S2 scene).
+        No-fire filenames don't contain coordinates, so we diversify by scene UUID.
+        """
+        import random
+        from collections import defaultdict
+
+        by_scene: dict = defaultdict(list)
+        for t in tiles:
+            # Filename: {scene_uuid}_none_negative_{idx}.npy
+            scene_uuid = t.stem.split('_')[0]
+            by_scene[scene_uuid].append(t)
+
+        # Pick one random tile from each scene, then top up randomly if needed
+        one_per_scene = [random.choice(v) for v in by_scene.values()]
+        random.shuffle(one_per_scene)
+
+        if len(one_per_scene) >= n:
+            return one_per_scene[:n]
+
+        # Not enough scenes — fill remainder randomly from full pool
+        remaining_pool = [t for t in tiles if t not in one_per_scene]
+        extra = random.sample(remaining_pool, min(n - len(one_per_scene), len(remaining_pool)))
+        return one_per_scene + extra
+
     def create_sample_grid(self, n_samples: int = 6):
         """
-        Create sample visualizations.
-        
+        Create sample visualizations with geographic diversity.
+
+        Fire tiles are restricted to Portugal and selected to maximise
+        geographic spread. No-fire tiles are diversified across scenes.
+
         Args:
             n_samples: Number of samples to visualize (half fire, half no-fire)
         """
         logger.info(f"Creating {n_samples} sample visualizations...")
-        
+
         # Find tile files
         fire_tiles = list(self.tiles_dir.rglob("*positive*.npy"))
         no_fire_tiles = list(self.tiles_dir.rglob("*negative*.npy"))
-        
+
+        # Fallback: if tiles_dir is empty, search processed splits (symlinks to tiles)
+        if not fire_tiles and not no_fire_tiles:
+            splits_dir = Path("ml/data/processed/splits")
+            if splits_dir.exists():
+                fire_tiles = [f for f in splits_dir.rglob("*positive*.npy") if f.exists()]
+                no_fire_tiles = [f for f in splits_dir.rglob("*negative*.npy") if f.exists()]
+                if fire_tiles or no_fire_tiles:
+                    logger.info("tiles_dir empty — using splits fallback for visualisation")
+
         logger.info(f"Found {len(fire_tiles)} fire tiles, {len(no_fire_tiles)} no-fire tiles")
-        
+
         if not fire_tiles and not no_fire_tiles:
             logger.error("No tiles found. Generate dataset first.")
             return
-        
-        # Sample tiles
+
         n_fire = min(n_samples // 2, len(fire_tiles))
         n_no_fire = min(n_samples // 2, len(no_fire_tiles))
-        
-        import random
-        
-        sampled_fire = random.sample(fire_tiles, n_fire) if fire_tiles else []
-        sampled_no_fire = random.sample(no_fire_tiles, n_no_fire) if no_fire_tiles else []
-        
+
+        sampled_fire = self.select_diverse_fire_tiles(fire_tiles, n_fire)
+        sampled_no_fire = self.select_diverse_nofire_tiles(no_fire_tiles, n_no_fire)
+
         # Visualize each sample
         sample_info = []
-        
+
         for i, tile_path in enumerate(sampled_fire):
             output_path = self.output_dir / f"fire_sample_{i+1}.png"
+            loc = self.parse_tile_location(tile_path)
+            in_pt = self.is_in_portugal(*loc) if loc else False
+            logger.info(f"Fire sample {i+1}: {tile_path.name} "
+                        f"{'[Portugal ✓]' if in_pt else '[Outside Portugal!]'}")
             self.visualize_tile(tile_path, label=1, output_path=output_path)
             sample_info.append({
                 "type": "fire",
                 "filename": output_path.name,
-                "tile_path": str(tile_path)
+                "tile_path": str(tile_path),
+                "lat": loc[0] if loc else None,
+                "lon": loc[1] if loc else None,
+                "in_portugal": in_pt,
             })
-        
+
         for i, tile_path in enumerate(sampled_no_fire):
             output_path = self.output_dir / f"no_fire_sample_{i+1}.png"
             self.visualize_tile(tile_path, label=0, output_path=output_path)
             sample_info.append({
                 "type": "no_fire",
                 "filename": output_path.name,
-                "tile_path": str(tile_path)
+                "tile_path": str(tile_path),
+                "lat": None,
+                "lon": None,
+                "in_portugal": None,
             })
-        
+
         # Save sample info
         info_path = self.output_dir / "samples_info.json"
         with open(info_path, 'w') as f:
             json.dump(sample_info, f, indent=2)
-        
+
         logger.info(f"\n{'='*50}")
         logger.info(f"Created {len(sample_info)} visualizations")
-        logger.info(f"Fire samples: {n_fire}")
-        logger.info(f"No-fire samples: {n_no_fire}")
+        logger.info(f"Fire samples: {n_fire} (Portugal-only, geographically diverse)")
+        logger.info(f"No-fire samples: {n_no_fire} (scene-diverse)")
         logger.info(f"Saved to: {self.output_dir}")
         logger.info(f"{'='*50}")
 

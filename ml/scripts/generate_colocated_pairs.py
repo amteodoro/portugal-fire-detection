@@ -235,11 +235,14 @@ class ColocatedTileGenerator:
     def find_best_s3_scene(self, lon: float, lat: float) -> Optional[Tuple[Path, Dict]]:
         """Find the S3 scene with best coverage for the given coordinates."""
         all_scenes = []
-        for date_dir in self.s3_dir.iterdir():
-            if date_dir.is_dir():
-                for scene_dir in date_dir.iterdir():
-                    if scene_dir.is_dir():
-                        all_scenes.append(scene_dir)
+        # S3 layout: sentinel3/{instrument}/{date}/{uuid}/
+        for instrument_dir in self.s3_dir.iterdir():
+            if instrument_dir.is_dir():
+                for date_dir in instrument_dir.iterdir():
+                    if date_dir.is_dir():
+                        for scene_dir in date_dir.iterdir():
+                            if scene_dir.is_dir():
+                                all_scenes.append(scene_dir)
         
         best_scene = None
         best_row_distance = float('inf')
@@ -404,8 +407,13 @@ class ColocatedTileGenerator:
             logger.warning("No S2 scenes found")
             return 0
         
-        # Find S3 scenes
-        s3_scenes = list(self.s3_dir.glob("*.zip")) + list(self.s3_dir.glob("*.SEN3"))
+        # Find S3 scenes — layout: sentinel3/{instrument}/{date}/{uuid}/
+        s3_scenes = [
+            scene_dir
+            for instrument_dir in self.s3_dir.iterdir() if instrument_dir.is_dir()
+            for date_dir in instrument_dir.iterdir() if date_dir.is_dir()
+            for scene_dir in date_dir.iterdir() if scene_dir.is_dir()
+        ]
         if not s3_scenes:
             logger.warning("No S3 scenes found")
             return 0

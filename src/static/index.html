@@ -4,13 +4,21 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Portugal Fire Detection</title>
+  <meta name="description" content="Real-time fire detection map for Portugal using NASA FIRMS, Meteosat, and Sentinel satellite data with ML inference."/>
+  <meta property="og:title" content="Portugal Fire Detection"/>
+  <meta property="og:description" content="Real-time satellite fire detection for Portugal — VIIRS, MODIS, Meteosat FRP, Sentinel-2 and ML analysis."/>
+  <meta property="og:type" content="website"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
   <link rel="stylesheet" href="/static/css/styles.css"/>
 </head>
 <body>
   <a href="#map" class="skip-link">Skip to map</a>
   <h1 class="sr-only">Portugal Fire Detection</h1>
-  <nav class="navbar">
+  <nav class="navbar" aria-label="Main navigation">
     <div class="navbar-brand">Portugal Fire Detection</div>
     <ul class="navbar-nav">
       <li class="nav-item">
@@ -19,104 +27,151 @@
       <li class="nav-item">
         <a href="/static/dataset.html" class="nav-link">Dataset</a>
       </li>
+      <li class="nav-item">
+        <a href="/static/inference.html" class="nav-link">Model Eval</a>
+      </li>
     </ul>
   </nav>
   <div id="app">
-    <div id="map"></div>
+    <div id="map" role="application" aria-label="Interactive fire detection map of Portugal"></div>
+    <button id="sidebar-toggle" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">&#8249;</button>
     <div id="sidebar">
-      <div class="card">
-        <label>
-          <strong>Region</strong>
-          <select id="regionSelect">
-            <optgroup label="Portugal">
-              <option value="mainland" selected>Mainland Portugal</option>
-              <option value="madeira">Madeira</option>
-              <option value="azores">Açores</option>
-              <option value="all">All Portugal Regions</option>
-            </optgroup>
-            <optgroup label="Test Regions">
-              <option value="california">California, USA</option>
-              <option value="western_us">Western USA</option>
-            </optgroup>
-          </select>
-        </label>
-      </div>
 
-      <div class="card">
+      <!-- 1. Active Fire Layers — primary control, first in DOM -->
+      <div class="card card-fire-layers">
         <h2>Active Fire Layers</h2>
         <div class="layer-controls">
           <label>
             <input type="checkbox" id="viirsToggle" checked/>
-            VIIRS <span id="viirsCount" class="badge">-</span>
+            VIIRS <span id="viirsCount" class="badge" aria-label="VIIRS fire detections">-</span>
           </label>
           <label>
             <input type="checkbox" id="modisToggle"/>
-            MODIS <span id="modisCount" class="badge">-</span>
+            MODIS <span id="modisCount" class="badge" aria-label="MODIS fire detections">-</span>
           </label>
           <label>
             <input type="checkbox" id="frpToggle"/>
-            Meteosat FRP <span id="frpStatus" class="badge">-</span>
+            Meteosat FRP <span id="frpStatus" class="badge" aria-label="Meteosat FRP status">-</span>
           </label>
           <label>
             <input type="checkbox" id="heatmapToggle"/>
-            Fire Heatmap <span id="heatmapCount" class="badge">-</span>
+            Fire Heatmap <span id="heatmapCount" class="badge" aria-label="Fire heatmap point count">-</span>
           </label>
           <label>
             <input type="checkbox" id="s3Toggle"/>
-            Sentinel-3 Fire Pixels <span id="s3Count" class="badge">-</span>
+            Sentinel-3 <span title="Sentinel-3 SLSTR thermal fire pixels">Thermal</span> <span id="s3Count" class="badge" aria-label="Sentinel-3 fire pixel count">-</span>
           </label>
         </div>
       </div>
 
+      <!-- 2. Region + Time Period — merged "what data to show" card -->
       <div class="card">
-        <label>
-          <strong>Time Period</strong>
-          <select id="fireDays">
-            <option value="1" selected>Last 24 hours</option>
-            <option value="2">Last 2 days</option>
-            <option value="3">Last 3 days</option>
-            <option value="7">Last 7 days</option>
-            <option value="10">Last 10 days</option>
-          </select>
-        </label>
+        <div class="config-grid">
+          <label>
+            <strong>Region</strong>
+            <select id="regionSelect">
+              <optgroup label="Portugal">
+                <option value="mainland" selected>Mainland Portugal</option>
+                <option value="madeira">Madeira</option>
+                <option value="azores">Açores</option>
+                <option value="all">All Regions</option>
+              </optgroup>
+              <optgroup label="Test Regions">
+                <option value="california">California, USA</option>
+                <option value="western_us">Western USA</option>
+              </optgroup>
+            </select>
+          </label>
+          <label>
+            <strong>Time Period</strong>
+            <select id="fireDays">
+              <option value="1" selected>24 hours</option>
+              <option value="2">2 days</option>
+              <option value="3">3 days</option>
+              <option value="7">7 days</option>
+              <option value="10">10 days</option>
+            </select>
+          </label>
+        </div>
         <p class="info">FIRMS NRT data limited to 10 days max</p>
         <button id="refreshBtn">Refresh Fire Data</button>
-        <button id="exportCsvBtn">Export to CSV</button>
+        <button id="exportCsvBtn" class="outline">Export to CSV</button>
       </div>
 
+      <!-- 3. Status messages -->
+      <div class="card card-inline">
+        <h2>Status</h2>
+        <div id="statusMessages" role="status" aria-live="polite">Ready to load data</div>
+      </div>
+
+      <!-- 4. ML Model status — always visible, shows metrics when loaded -->
+      <div class="card card-inline" id="mlStatusCard">
+        <h2>ML Model</h2>
+        <div id="mlStatusText" class="ml-status-text ml-loading">Checking model status&hellip;</div>
+      </div>
+
+      <!-- 5. Historical Fire Timeline — needs database -->
+      <div class="card">
+        <h2>Historical Timeline</h2>
+        <div class="config-grid">
+          <label>
+            <strong>From</strong>
+            <input type="date" id="histStart" class="input-narrow"/>
+          </label>
+          <label>
+            <strong>To</strong>
+            <input type="date" id="histEnd" class="input-narrow"/>
+          </label>
+        </div>
+        <div class="config-grid" style="margin-top:6px">
+          <label>
+            <strong>Source</strong>
+            <select id="histSource">
+              <option value="">All</option>
+              <option value="VIIRS">VIIRS</option>
+              <option value="MODIS">MODIS</option>
+            </select>
+          </label>
+        </div>
+        <button id="histSearchBtn" style="margin-top:8px">Search History</button>
+        <button id="histClearBtn" class="outline" style="margin-top:4px">Clear</button>
+        <div id="histStatus" class="ml-loading" style="margin-top:6px;font-size:11px"></div>
+      </div>
+
+      <!-- 7. AOI Saved Searches -->
+      <div class="card">
+        <h2>Areas of Interest</h2>
+        <button id="aoiDrawBtn">Draw AOI on Map</button>
+        <div id="aoiList" style="margin-top:8px"></div>
+      </div>
+
+      <!-- 6. Sentinel-2 search — secondary tool -->
       <div class="card">
         <h2>Sentinel-2 Search</h2>
         <div class="search-controls">
           <label>
             Days
-            <input type="number" id="s2Days" min="1" max="30" value="7" style="width: 60px;"/>
+            <input type="number" id="s2Days" min="1" max="30" value="7" class="input-narrow"/>
           </label>
           <label>
             Cloud %
-            <input type="number" id="s2Cloud" min="0" max="100" value="20" style="width: 60px;"/>
+            <input type="number" id="s2Cloud" min="0" max="100" value="20" class="input-narrow"/>
           </label>
           <button id="s2SearchBtn">Search</button>
         </div>
-        <div id="s2Results"></div>
-      </div>
-
-      <div class="card">
-        <h2>Status</h2>
-        <div id="statusMessages" role="status" aria-live="polite">Ready to load data</div>
-      </div>
-
-      <div class="card" id="mlStatusCard" style="display:none;">
-        <h2>ML Model</h2>
-        <div id="mlStatusText" class="ml-status-text"></div>
+        <div id="s2Results"><p class="ml-loading">Search Sentinel-2 imagery using the controls above.</p></div>
       </div>
 
       <p class="info">
-        Data sources: NASA FIRMS (VIIRS/MODIS), EUMETSAT (Meteosat FRP), Copernicus (Sentinel-2)
+        Data sources: NASA FIRMS (VIIRS/MODIS), EUMETSAT (Meteosat FRP), Copernicus (Sentinel-2/3)
       </p>
     </div>
   </div>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-  <script src="https://unpkg.com/supercluster@8.0.1/dist/supercluster.min.js" defer></script>
+  <!-- TODO HIGH-2: add integrity="sha384-..." to both scripts once hashes are computed:
+       curl -s URL | openssl dgst -sha384 -binary | openssl base64 -A -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous" defer></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js" crossorigin="anonymous" defer></script>
+  <script src="https://unpkg.com/supercluster@8.0.1/dist/supercluster.min.js" crossorigin="anonymous" defer></script>
   <script src="/static/js/app.js" defer></script>
 </body>
 </html>

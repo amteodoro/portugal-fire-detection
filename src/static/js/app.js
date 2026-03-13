@@ -1,3 +1,15 @@
+// Debounce utility — delays fn execution until after `wait` ms of inactivity
+function debounce(fn, wait) {
+  let timer;
+  return function(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), wait);
+  };
+}
+
+// FIRMS response cache keyed by "product:days:bbox"
+const _firmsCache = new Map();
+
 // Region configurations with bbox [lon_min, lat_min, lon_max, lat_max]
 const REGIONS = {
   mainland: { 
@@ -70,21 +82,26 @@ function fireSeverityColor(conf) {
   return conf >= 80 ? FIRE_HIGH_COLOR : conf >= 50 ? FIRE_MEDIUM_COLOR : FIRE_LOW_COLOR;
 }
 
-// Status tracking — oldest message at top, newest at bottom (H8)
+// Status tracking — oldest message at top, newest at bottom
+const STATUS_ICONS = { success: '✓', warning: '⚠', error: '✕', info: '' };
 function updateStatus(message, type = 'info') {
   const statusBox = document.querySelector('#statusMessages');
   const timestamp = new Date().toLocaleTimeString();
   const className = type === 'success' ? 'success' : type === 'warning' ? 'warning' : type === 'error' ? 'error' : '';
+  const icon = STATUS_ICONS[type] || '';
+  // Strip any leading icon already in the message to avoid doubling
+  const cleanMsg = message.replace(/^[✓✗✕⚠]\s*/, '');
   const div = document.createElement('div');
   if (className) div.className = className;
-  div.textContent = `[${timestamp}] ${message}`;
+  // Note: message comes from internal code only (no user input), safe for innerHTML
+  div.innerHTML = `${icon ? `<span class="status-icon">${icon}</span> ` : ''}[${timestamp}] ${cleanMsg}`;
   statusBox.appendChild(div);
   // Keep only last 5 messages
   while (statusBox.children.length > 5) {
     statusBox.removeChild(statusBox.firstChild);
   }
   statusBox.scrollTop = statusBox.scrollHeight;
-  console.log(`[${type.toUpperCase()}] ${message}`);
+  console.log(`[${type.toUpperCase()}] ${cleanMsg}`);
 }
 
 function updateBadge(elementId, count, status = '') {
@@ -102,23 +119,30 @@ function updateBadge(elementId, count, status = '') {
 async function loadFIRMS(product, layer, days = 1, bbox = null) {
   const productName = product.toUpperCase();
   const badgeId = product === 'viirs' ? 'viirsCount' : 'modisCount';
-  
+
   try {
     updateStatus(`Loading ${productName} data (${days} days)...`);
     updateBadge(badgeId, 0, '...');
-    
+
     // Build URL with optional bbox parameter
     let url = `/api/firms/${product}?days=${days}`;
     if (bbox) {
       url += `&bbox=${bbox.join(',')}`;
     }
-    
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+
+    // Use cached response if available for same (product, days, bbox) key
+    const cacheKey = `${product}:${days}:${bbox ? bbox.join(',') : ''}`;
+    let data;
+    if (_firmsCache.has(cacheKey)) {
+      data = _firmsCache.get(cacheKey);
+    } else {
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      data = await res.json();
+      _firmsCache.set(cacheKey, data);
     }
-    
-    const data = await res.json();
     layer.clearLayers();
     
     if (data.features && data.features.length > 0) {
@@ -265,7 +289,10 @@ async function loadS3FirePixels() {
           className: '', iconSize: [14, 14], iconAnchor: [7, 7],
         }),
       });
-      marker.bindPopup(`<strong>Sentinel-3</strong><br/>Tile: ${p.tile_id || 'N/A'}<br/>Scene: ${p.scene_id || 'N/A'}<br/>Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)}`);
+      const satLabel = p.satellite ? `${p.satellite} (SLSTR)` : 'Sentinel-3';
+      const instrLabel = p.instrument ? `<br/>Instrument: ${p.instrument}` : '';
+      const dateLabel = p.date ? `<br/>Date: ${p.date}` : '';
+      marker.bindPopup(`<strong>${satLabel}</strong>${dateLabel}${instrLabel}<br/>Tile: ${p.tile_id || 'N/A'}<br/>Lat: ${lat.toFixed(4)}, Lon: ${lon.toFixed(4)}`);
       marker.addTo(s3Layer);
     });
     if (document.querySelector('#s3Toggle').checked) s3Layer.addTo(map);
@@ -622,18 +649,15 @@ map.on('popupopen', function(e) {
   });
 });
 
-// Map move/zoom handlers to update clusters dynamically
-map.on('moveend', () => {
+// Map move/zoom handlers to update clusters dynamically (debounced — 50ms)
+const _debouncedRenderClusters = debounce(() => {
   if (fireClusterIndex && document.querySelector('#heatmapToggle').checked) {
     renderClusters();
   }
-});
+}, 50);
 
-map.on('zoomend', () => {
-  if (fireClusterIndex && document.querySelector('#heatmapToggle').checked) {
-    renderClusters();
-  }
-});
+map.on('moveend', _debouncedRenderClusters);
+map.on('zoomend', _debouncedRenderClusters);
 
 // Sentinel-2 search
 document.querySelector('#s2SearchBtn').addEventListener('click', async () => {
@@ -641,21 +665,22 @@ document.querySelector('#s2SearchBtn').addEventListener('click', async () => {
   const cloud = document.querySelector('#s2Cloud').value;
   const box = document.querySelector('#s2Results');
   
-  box.innerHTML = '<p>Searching...</p>';
-  
+  box.innerHTML = '<p class="ml-loading">Searching Sentinel-2 imagery\u2026</p>';
+
   try {
     const res = await fetch(`/api/sentinel2/search?days=${days}&cloud_pct=${cloud}&limit=8`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    
+
     box.innerHTML = '';
-    
+
     if (data.features && data.features.length > 0) {
       // Fetch and display thumbnails for each item
       for (const item of data.features.slice(0, 4)) {
         try {
           const thumbRes = await fetch(`/api/sentinel2/thumbnail?days=${days}&cloud_pct=${cloud}`);
           const tn = await thumbRes.json();
-          
+
           if (tn.path) {
             const img = document.createElement('img');
             img.src = `/api/images/sentinel2/${tn.path.split('/').pop()}`;
@@ -667,18 +692,42 @@ document.querySelector('#s2SearchBtn').addEventListener('click', async () => {
           console.error('Error fetching thumbnail:', err);
         }
       }
-      
+
       if (box.children.length === 0) {
-        box.innerHTML = '<p>No thumbnails available</p>';
+        box.innerHTML = '<p class="ml-loading">No thumbnails available for this search.</p>';
       }
     } else {
-      box.innerHTML = '<p>No results found</p>';
+      box.innerHTML = '<p class="ml-loading">No imagery found \u2014 try extending the date range or increasing cloud cover threshold.</p>';
     }
   } catch (error) {
     console.error('Error searching Sentinel-2:', error);
-    box.innerHTML = '<p>Error searching</p>';
+    box.innerHTML = '<p class="ml-error">Search failed \u2014 check your network connection and try again.</p>';
   }
 });
+
+// Sidebar collapse toggle — persists state in localStorage
+(function initSidebarToggle() {
+  const toggle = document.getElementById('sidebar-toggle');
+  const app = document.getElementById('app');
+  if (!toggle || !app) return;
+
+  function setCollapsed(collapsed) {
+    app.classList.toggle('sidebar-collapsed', collapsed);
+    toggle.textContent = collapsed ? '\u203a' : '\u2039';
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+    toggle.setAttribute('title', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+    localStorage.setItem('sidebar-collapsed', String(collapsed));
+  }
+
+  // Restore persisted state
+  const savedCollapsed = localStorage.getItem('sidebar-collapsed') === 'true';
+  if (savedCollapsed) setCollapsed(true);
+
+  toggle.addEventListener('click', () => {
+    setCollapsed(!app.classList.contains('sidebar-collapsed'));
+  });
+})();
 
 // Initial data load - fetch config and center map
 async function initializeApp() {
@@ -724,24 +773,22 @@ async function initializeApp() {
   }
 }
 
-// Load ML model status into sidebar
+// Load ML model status into sidebar — always shows the card
 async function loadMLStatus() {
+  const text = document.getElementById('mlStatusText');
+  if (!text) return;
   try {
     const res = await fetch('/api/inference/status');
-    if (!res.ok) return;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const card = document.getElementById('mlStatusCard');
-    const text = document.getElementById('mlStatusText');
-    if (!card || !text) return;
     if (data.loaded) {
-      card.style.display = '';
       // Also fetch test metrics if available
       let metricsNote = '';
       try {
         const mr = await fetch('/api/inference/metrics');
         if (mr.ok) {
           const m = await mr.json();
-          metricsNote = `<br/>Test F1: <strong>${(m.f1 * 100).toFixed(1)}%</strong> &middot; AUC: ${(m.auc * 100).toFixed(1)}%`;
+          metricsNote = `<br/>Test F1: <strong class="ml-pct">${(m.f1 * 100).toFixed(1)}%</strong> &middot; AUC: <strong class="ml-pct">${(m.auc * 100).toFixed(1)}%</strong>`;
         }
       } catch (_) {}
       text.innerHTML = `
@@ -749,52 +796,39 @@ async function loadMLStatus() {
         ${data.tiles_indexed} tiles indexed &middot; threshold ${(data.threshold * 100).toFixed(0)}%${metricsNote}<br/>
         <span class="ml-status-hint">Click any fire marker &rarr; ML / Live ML Check</span>
       `;
+    } else {
+      text.innerHTML = `<span class="ml-status-hint">Model not loaded &mdash; restart app with <code>--checkpoint</code> flag or check <a href="/static/dataset.html">training status</a>.</span>`;
     }
-  } catch (e) { /* model not available */ }
+  } catch (e) {
+    text.innerHTML = `<span class="ml-status-hint">ML status unavailable &mdash; check <a href="/static/dataset.html">dataset page</a>.</span>`;
+  }
 }
 
-// ML fire inference check
-async function checkMLFire(lat, lon, popupId, live = false) {
-  const el = document.getElementById(popupId);
-  if (!el) return;
-  el.innerHTML = live
-    ? '<span class="ml-loading">Fetching live S2 tile… (~5–10s)</span>'
-    : '<span class="ml-loading">Running model...</span>';
-  try {
-    const res = await fetch('/api/inference/predict', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lat, lon, live }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      el.innerHTML = `<span class="ml-error">ML error: ${err.detail || res.status}</span>`;
-      return;
-    }
-    const data = await res.json();
-    const source = data.source || 'training_tile';
-    const pct = (data.fire_probability * 100).toFixed(1);
-    const severityClass = data.fire_probability >= 0.8 ? 'ml-fire-high'
-      : data.fire_probability >= 0.5 ? 'ml-fire-medium' : 'ml-fire-none';
-    const label = data.is_fire ? 'FIRE CONFIRMED' : 'No fire detected';
-    // Text label for colorblind users (shape/text, not color alone)
-    const severityText = data.fire_probability >= 0.8 ? '▲ High'
-      : data.fire_probability >= 0.5 ? '◆ Medium' : '● Low';
+// Render ML prediction result HTML into element el.
+// statusLabel: "Preliminary (training tile)" | "Live (Sentinel-2)" | null
+function _renderMLResult(el, data, statusLabel) {
+  const source = data.source || 'training_tile';
+  const pct = (data.fire_probability * 100).toFixed(1);
+  const severityClass = data.fire_probability >= 0.8 ? 'ml-fire-high'
+    : data.fire_probability >= 0.5 ? 'ml-fire-medium' : 'ml-fire-none';
+  const label = data.is_fire ? 'FIRE CONFIRMED' : 'No fire detected';
+  const severityText = data.fire_probability >= 0.8 ? '▲ High'
+    : data.fire_probability >= 0.5 ? '◆ Medium' : '● Low';
 
-    // Correct haversine-approximated distance (longitude degree varies with latitude)
+  let distNote = '';
+  if (source === 'live') {
+    const sceneDate = data.scene_date ? ` · scene ${data.scene_date}` : '';
+    distNote = `<br/><span class="ml-source-live">Live S2 tile${sceneDate}</span>`;
+  } else if (data.tile_lat != null && data.tile_lon != null) {
+    const lat = data._req_lat, lon = data._req_lon;
     let distKm = null;
-    if (data.tile_lat != null && data.tile_lon != null) {
+    if (lat != null && lon != null) {
       const latRad = lat * Math.PI / 180;
       const dlat = (data.tile_lat - lat) * 111;
       const dlon = (data.tile_lon - lon) * 111 * Math.cos(latRad);
       distKm = Math.sqrt(dlat * dlat + dlon * dlon);
     }
-
-    let distNote = '';
-    if (source === 'live') {
-      const sceneDate = data.scene_date ? ` · scene ${data.scene_date}` : '';
-      distNote = `<br/><span class="ml-source-live">Live S2 tile${sceneDate}</span>`;
-    } else if (distKm !== null) {
+    if (distKm !== null) {
       const warnClass = distKm > 50 ? 'ml-dist-warn' : 'ml-dist-ok';
       const warnIcon = distKm > 50 ? ' ⚠' : '';
       distNote = `<br/><span class="${warnClass}">Nearest tile: ${distKm.toFixed(1)} km away${warnIcon}</span>`;
@@ -802,26 +836,340 @@ async function checkMLFire(lat, lon, popupId, live = false) {
         distNote += `<br/><span class="ml-dist-warn">Result may be unreliable at this distance</span>`;
       }
     }
+  }
 
-    el.innerHTML = `
-      <div class="ml-result ${severityClass}">
-        <strong class="ml-label">ML: ${label}</strong>
-        <span class="ml-severity-text">${severityText}</span><br/>
-        Probability: <strong>${pct}%</strong>
-        <div class="ml-prob-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Fire probability ${pct}%">
-          <div class="ml-prob-bar-fill"></div>
-        </div>
-        ${distNote}
-      </div>`;
-    // Trigger CSS transition on the bar after DOM insertion
-    requestAnimationFrame(() => {
-      const fill = el.querySelector('.ml-prob-bar-fill');
-      if (fill) fill.style.width = `${pct}%`;
+  const statusBadge = statusLabel
+    ? `<span class="ml-status-badge">${statusLabel}</span><br/>`
+    : '';
+
+  el.innerHTML = `
+    <div class="ml-result ${severityClass}" data-status="${statusLabel || 'final'}">
+      ${statusBadge}
+      <strong class="ml-label">ML: ${label}</strong>
+      <span class="ml-severity-text">${severityText}</span><br/>
+      Probability: <strong class="ml-pct">${pct}%</strong>
+      <div class="ml-prob-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Fire probability ${pct}%">
+        <div class="ml-prob-bar-fill"></div>
+      </div>
+      ${distNote}
+    </div>`;
+  requestAnimationFrame(() => {
+    const fill = el.querySelector('.ml-prob-bar-fill');
+    if (fill) fill.style.transform = `scaleX(${pct / 100})`;
+  });
+}
+
+// ML fire inference check
+async function checkMLFire(lat, lon, popupId, live = false) {
+  const el = document.getElementById(popupId);
+  if (!el) return;
+
+  if (!live) {
+    // Fast path: training tile only
+    el.innerHTML = '<span class="ml-loading">Running model\u2026</span>';
+    try {
+      const res = await fetch('/api/inference/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat, lon, live: false }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        el.innerHTML = `<span class="ml-error">ML error: ${err.detail || res.status}</span>`;
+        return;
+      }
+      const data = await res.json();
+      data._req_lat = lat; data._req_lon = lon;
+      _renderMLResult(el, data, null);
+    } catch (e) {
+      el.innerHTML = `<span class="ml-error">ML error: ${e.message}</span>`;
+    }
+    return;
+  }
+
+  // Live path: show spinner, run training tile immediately as preliminary,
+  // then kick off live fetch and replace result when done.
+  el.innerHTML = '<span class="ml-loading"><span class="ml-spinner" aria-hidden="true"></span> Fetching S2 tile\u2026</span>';
+
+  // Step 1: get preliminary training-tile result (fast, ~1s)
+  let prelimData = null;
+  try {
+    const r = await fetch('/api/inference/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat, lon, live: false }),
     });
+    if (r.ok) {
+      prelimData = await r.json();
+      prelimData._req_lat = lat; prelimData._req_lon = lon;
+      _renderMLResult(el, prelimData, 'Preliminary (training tile)');
+      // Append live-fetch spinner below preliminary result
+      const spinner = document.createElement('div');
+      spinner.className = 'ml-live-pending';
+      spinner.innerHTML = '<span class="ml-spinner" aria-hidden="true"></span> Fetching live S2 tile\u2026';
+      el.appendChild(spinner);
+    }
+  } catch (_) { /* non-critical — proceed to live fetch anyway */ }
+
+  // Step 2: live fetch
+  try {
+    const res = await fetch('/api/inference/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat, lon, live: true }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      if (prelimData) {
+        // Keep preliminary result, show live error below
+        const existingResult = el.querySelector('.ml-result');
+        if (existingResult) {
+          const errSpan = document.createElement('div');
+          errSpan.className = 'ml-live-error';
+          errSpan.innerHTML = `<span class="ml-error">Live fetch failed: ${err.detail || res.status}</span>`;
+          el.innerHTML = '';
+          el.appendChild(existingResult);
+          el.appendChild(errSpan);
+        }
+      } else {
+        el.innerHTML = `<span class="ml-error">ML error: ${err.detail || res.status}</span>`;
+      }
+      return;
+    }
+    const data = await res.json();
+    data._req_lat = lat; data._req_lon = lon;
+    _renderMLResult(el, data, 'Live (Sentinel-2)');
   } catch (e) {
-    el.innerHTML = `<span class="ml-error">ML error: ${e.message}</span>`;
+    if (prelimData) {
+      // Live fetch failed but we have a preliminary — show it without the live-pending spinner
+      _renderMLResult(el, prelimData, 'Preliminary (training tile)');
+      const errDiv = document.createElement('div');
+      errDiv.innerHTML = `<span class="ml-error">Live fetch error: ${e.message}</span>`;
+      el.appendChild(errDiv);
+    } else {
+      el.innerHTML = `<span class="ml-error">ML error: ${e.message}</span>`;
+    }
   }
 }
 
+// ─── Historical Fire Timeline ─────────────────────────────────
+let historicalLayer = L.layerGroup();
+
+function _ageColor(detectedAt) {
+  const now = Date.now();
+  const age = now - new Date(detectedAt).getTime();
+  const days = age / (1000 * 60 * 60 * 24);
+  // Newer = bright orange-red, older = faded gold
+  const opacity = Math.max(0.2, 1 - days / 30);
+  return { color: 'hsl(28,90%,48%)', opacity };
+}
+
+async function loadHistoricalFires() {
+  const start = document.getElementById('histStart').value;
+  const end = document.getElementById('histEnd').value;
+  const source = document.getElementById('histSource').value;
+  const statusEl = document.getElementById('histStatus');
+
+  if (!start || !end) {
+    statusEl.textContent = 'Select both start and end dates.';
+    return;
+  }
+
+  statusEl.textContent = 'Loading historical data\u2026';
+  historicalLayer.clearLayers();
+  if (map.hasLayer(historicalLayer)) map.removeLayer(historicalLayer);
+
+  let url = `/api/firms/history?start=${start}&end=${end}`;
+  if (source) url += `&source=${source}`;
+  const region = REGIONS[currentRegion];
+  if (region && region.bbox) url += `&bbox=${region.bbox.join(',')}`;
+
+  try {
+    const res = await fetch(url);
+    if (res.status === 503) {
+      statusEl.textContent = 'Historical data unavailable (database not configured).';
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (!data.features || data.features.length === 0) {
+      statusEl.textContent = 'No historical fires found for this period.';
+      return;
+    }
+
+    data.features.forEach(f => {
+      const [lon, lat] = f.geometry.coordinates;
+      const p = f.properties;
+      const { color, opacity } = _ageColor(p.detected_at);
+      const marker = L.circleMarker([lat, lon], {
+        radius: 4,
+        color,
+        fillColor: color,
+        fillOpacity: opacity,
+        weight: 1,
+        opacity,
+      });
+      marker.bindPopup(
+        `<strong>Historical: ${p.source}</strong><br/>` +
+        `Date: ${p.detected_at ? p.detected_at.slice(0, 10) : 'N/A'}<br/>` +
+        `FRP: ${p.frp != null ? p.frp.toFixed(1) + ' MW' : 'N/A'}<br/>` +
+        `Confidence: ${p.confidence || 'N/A'}`
+      );
+      marker.addTo(historicalLayer);
+    });
+
+    historicalLayer.addTo(map);
+    statusEl.textContent = `${data.features.length} detections from ${start} to ${end}.`;
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}`;
+  }
+}
+
+// Set sensible defaults: last 7 days
+(function initHistoryDates() {
+  const today = new Date();
+  const prior = new Date(today);
+  prior.setDate(today.getDate() - 7);
+  const fmt = d => d.toISOString().slice(0, 10);
+  const s = document.getElementById('histStart');
+  const e = document.getElementById('histEnd');
+  if (s) s.value = fmt(prior);
+  if (e) e.value = fmt(today);
+})();
+
+document.getElementById('histSearchBtn').addEventListener('click', loadHistoricalFires);
+document.getElementById('histClearBtn').addEventListener('click', () => {
+  historicalLayer.clearLayers();
+  if (map.hasLayer(historicalLayer)) map.removeLayer(historicalLayer);
+  document.getElementById('histStatus').textContent = '';
+});
+
+// ─── Area of Interest (AOI) ───────────────────────────────────
+let _aoiDrawLayer = null;
+let _drawControl = null;
+
+async function loadAOIList() {
+  const listEl = document.getElementById('aoiList');
+  if (!listEl) return;
+  try {
+    const res = await fetch('/api/aoi');
+    if (res.status === 503) {
+      listEl.innerHTML = '<p class="ml-loading" style="font-size:11px">Database not configured.</p>';
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const aois = await res.json();
+    if (!aois.length) {
+      listEl.innerHTML = '<p class="ml-loading" style="font-size:11px">No saved areas yet.</p>';
+      return;
+    }
+    listEl.innerHTML = aois.map(a => `
+      <div class="aoi-item" data-id="${a.id}">
+        <span class="aoi-name">${a.name || 'Unnamed AOI'}</span>
+        <span class="aoi-email">${a.email ? '\uD83D\uDCE7 ' + a.email : ''}</span>
+        <div class="aoi-actions">
+          <button class="aoi-fires-btn outline" data-id="${a.id}" title="Show fires in this area">Fires</button>
+          <button class="aoi-delete-btn outline" data-id="${a.id}" title="Delete AOI">\u00D7</button>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    listEl.innerHTML = `<p class="ml-error" style="font-size:11px">Failed to load AOIs: ${e.message}</p>`;
+  }
+}
+
+async function deleteAOI(id) {
+  try {
+    const res = await fetch(`/api/aoi/${id}`, { method: 'DELETE' });
+    if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+    await loadAOIList();
+    updateStatus('AOI deleted.', 'success');
+  } catch (e) {
+    updateStatus(`Failed to delete AOI: ${e.message}`, 'error');
+  }
+}
+
+async function showAOIFires(id) {
+  updateStatus('Loading fires for AOI\u2026');
+  try {
+    const res = await fetch(`/api/aoi/${id}/fires`);
+    if (res.status === 503) { updateStatus('Database not configured.', 'warning'); return; }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    historicalLayer.clearLayers();
+    if (map.hasLayer(historicalLayer)) map.removeLayer(historicalLayer);
+    if (!data.features || !data.features.length) {
+      updateStatus('No recent fires in this AOI.', 'info'); return;
+    }
+    data.features.forEach(f => {
+      const [lon, lat] = f.geometry.coordinates;
+      const p = f.properties;
+      const { color, opacity } = _ageColor(p.detected_at);
+      L.circleMarker([lat, lon], { radius: 4, color, fillColor: color, fillOpacity: opacity, weight: 1 })
+        .bindPopup(`<strong>${p.source}</strong><br/>${p.detected_at ? p.detected_at.slice(0,10) : ''}`)
+        .addTo(historicalLayer);
+    });
+    historicalLayer.addTo(map);
+    updateStatus(`\u2713 ${data.count} fire(s) in AOI`, 'success');
+  } catch (e) {
+    updateStatus(`AOI fires error: ${e.message}`, 'error');
+  }
+}
+
+// Delegate AOI button clicks
+document.getElementById('aoiList').addEventListener('click', e => {
+  const del = e.target.closest('.aoi-delete-btn');
+  if (del) { deleteAOI(del.dataset.id); return; }
+  const fires = e.target.closest('.aoi-fires-btn');
+  if (fires) { showAOIFires(fires.dataset.id); }
+});
+
+document.getElementById('aoiDrawBtn').addEventListener('click', () => {
+  if (!window.L || !L.Draw) { updateStatus('Leaflet.draw not loaded.', 'warning'); return; }
+
+  if (_drawControl) {
+    map.removeControl(_drawControl);
+    _drawControl = null;
+  }
+  if (_aoiDrawLayer) {
+    map.removeLayer(_aoiDrawLayer);
+    _aoiDrawLayer = null;
+  }
+
+  _aoiDrawLayer = new L.FeatureGroup().addTo(map);
+  _drawControl = new L.Control.Draw({
+    draw: { polygon: true, polyline: false, rectangle: false, circle: false, marker: false, circlemarker: false },
+    edit: { featureGroup: _aoiDrawLayer },
+  });
+  map.addControl(_drawControl);
+  updateStatus('Draw a polygon on the map to create an AOI.', 'info');
+});
+
+map.on(L.Draw ? L.Draw.Event.CREATED : 'draw:created', async (e) => {
+  if (!_aoiDrawLayer) return;
+  _aoiDrawLayer.clearLayers();
+  _aoiDrawLayer.addLayer(e.layer);
+
+  const geojson = e.layer.toGeoJSON().geometry;
+  const name = prompt('Name for this AOI (optional):') || '';
+  const email = prompt('Email for fire alerts (optional):') || '';
+
+  try {
+    const res = await fetch('/api/aoi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name || null, email: email || null, boundary: geojson }),
+    });
+    if (res.status === 503) { updateStatus('Database not configured — AOI not saved.', 'warning'); return; }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    updateStatus('\u2713 AOI saved.', 'success');
+    await loadAOIList();
+    if (_drawControl) { map.removeControl(_drawControl); _drawControl = null; }
+  } catch (err) {
+    updateStatus(`Failed to save AOI: ${err.message}`, 'error');
+  }
+});
+
 // Start the application
 initializeApp();
+loadAOIList();

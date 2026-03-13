@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Model Evaluation — Portugal Fire Detection</title>
+  <meta name="description" content="ML model evaluation results — inference vs ground truth on the held-out test set." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    header { margin-bottom: 2.5rem; padding: 2rem 1.5rem; }
+    h1 { font-size: 2.25rem; font-weight: 700; letter-spacing: -0.05em; color: hsl(var(--foreground)); margin-bottom: 0.375rem; }
+    .subtitle { color: hsl(var(--muted-foreground)); font-size: 1rem; }
+
+    /* ─── Stats bar ─── */
+    .stats-bar {
+      display: flex; align-items: stretch;
+      background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+      border-radius: var(--radius); margin-bottom: 2rem; overflow: hidden;
+    }
+    .stat-item {
+      flex: 1; padding: 1rem 1.25rem;
+      border-right: 1px solid hsl(var(--border)); min-width: 0;
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-item-primary { flex: 1.5; background: hsl(var(--muted)); }
+    .stat-number {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.75rem; font-weight: 700;
+      color: hsl(var(--foreground)); line-height: 1; letter-spacing: -0.02em;
+    }
+    .stat-label {
+      color: hsl(var(--muted-foreground)); font-size: 0.6875rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em; margin-top: 0.25rem;
+    }
+    .stat-detail { margin-top: 0.375rem; font-size: 0.8125rem; color: hsl(var(--muted-foreground)); }
+
+    /* ─── Section ─── */
+    .section {
+      background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+      border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.5rem;
+    }
+    .section-title {
+      font-size: 1.0625rem; font-weight: 600; color: hsl(var(--foreground));
+      margin-bottom: 1.25rem; padding-bottom: 0.75rem;
+      border-bottom: 1px solid hsl(var(--border));
+    }
+
+    /* ─── Two-column layout ─── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+    @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+    @media (max-width: 1100px) { .three-col { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 700px) { .three-col { grid-template-columns: 1fr; } }
+
+    /* ─── Confusion matrix ─── */
+    .cm-grid {
+      display: grid; grid-template-columns: auto 1fr 1fr;
+      grid-template-rows: auto 1fr 1fr;
+      gap: 4px; width: 100%;
+    }
+    .cm-header {
+      font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: hsl(var(--muted-foreground));
+      display: flex; align-items: center; justify-content: center; padding: 0.5rem;
+    }
+    .cm-cell {
+      border-radius: calc(var(--radius) - 2px); padding: 1.25rem 1rem;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; min-height: 100px; transition: transform 0.2s;
+    }
+    .cm-cell:hover { transform: scale(1.02); }
+    .cm-tp { background: hsl(142 50% 92%); border: 2px solid hsl(142 60% 70%); }
+    .cm-tn { background: hsl(142 50% 92%); border: 2px solid hsl(142 60% 70%); }
+    .cm-fp { background: hsl(45 90% 92%); border: 2px solid hsl(45 80% 65%); }
+    .cm-fn { background: hsl(0 70% 94%); border: 2px solid hsl(0 65% 75%); }
+    .cm-count {
+      font-family: 'Barlow Condensed', sans-serif; font-size: 2.25rem;
+      font-weight: 700; line-height: 1; letter-spacing: -0.02em;
+    }
+    .cm-tp .cm-count, .cm-tn .cm-count { color: hsl(142 60% 30%); }
+    .cm-fp .cm-count { color: hsl(35 80% 35%); }
+    .cm-fn .cm-count { color: hsl(0 65% 40%); }
+    .cm-label {
+      font-size: 0.6875rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; margin-top: 0.375rem;
+    }
+    .cm-tp .cm-label, .cm-tn .cm-label { color: hsl(142 50% 38%); }
+    .cm-fp .cm-label { color: hsl(35 75% 38%); }
+    .cm-fn .cm-label { color: hsl(0 60% 45%); }
+    .cm-desc { font-size: 0.6875rem; color: hsl(var(--muted-foreground)); margin-top: 0.25rem; }
+    .cm-row-label {
+      writing-mode: vertical-lr; transform: rotate(180deg);
+      font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: hsl(var(--muted-foreground));
+      display: flex; align-items: center; justify-content: center;
+      padding: 0.5rem; white-space: nowrap;
+    }
+
+    /* ─── Canvas charts ─── */
+    .chart-canvas { width: 100%; height: auto; display: block; border-radius: var(--radius); }
+    .chart-legend {
+      display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.75rem;
+      font-size: 0.8125rem; color: hsl(var(--muted-foreground));
+    }
+    .legend-dot {
+      width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+      margin-right: 4px; vertical-align: middle;
+    }
+
+    /* ─── Outcome filter tabs ─── */
+    .outcome-tabs {
+      display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem;
+    }
+    .outcome-tab {
+      display: flex; align-items: center; gap: 0.375rem;
+      padding: 0.4375rem 0.875rem; border-radius: 99px;
+      border: 1.5px solid hsl(var(--border));
+      background: hsl(var(--background)); color: hsl(var(--muted-foreground));
+      font-size: 0.8125rem; font-weight: 600; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .outcome-tab:hover { border-color: hsl(var(--foreground)); color: hsl(var(--foreground)); }
+    .outcome-tab.active {
+      background: hsl(var(--foreground)); color: hsl(var(--background));
+      border-color: hsl(var(--foreground));
+    }
+    .outcome-tab .badge {
+      font-size: 0.6875rem; padding: 1px 6px; border-radius: 99px;
+      background: rgba(255,255,255,0.2);
+    }
+    .outcome-tab:not(.active) .badge {
+      background: hsl(var(--muted)); color: hsl(var(--muted-foreground));
+    }
+    .tab-tp .badge { background: hsl(142 60% 80%); color: hsl(142 60% 25%); }
+    .tab-fp .badge { background: hsl(45 80% 80%); color: hsl(35 70% 30%); }
+    .tab-fn .badge { background: hsl(0 65% 88%); color: hsl(0 60% 40%); }
+    .tab-tn .badge { background: hsl(220 14% 85%); color: hsl(220 14% 35%); }
+    .outcome-tab.active .badge { background: rgba(255,255,255,0.25); color: inherit; }
+
+    /* ─── Tile card grid ─── */
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .tile-card {
+      background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+      border-radius: var(--radius); overflow: hidden;
+      transition: box-shadow 0.2s, transform 0.2s;
+      cursor: pointer;
+    }
+    .tile-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); transform: translateY(-2px); }
+    .tile-card-img {
+      width: 100%; aspect-ratio: 1; object-fit: cover; display: block;
+      background: hsl(var(--muted));
+    }
+    .tile-card-body { padding: 0.625rem 0.75rem; }
+    .tile-outcome-badge {
+      display: inline-flex; align-items: center; gap: 0.25rem;
+      font-size: 0.625rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; padding: 2px 7px; border-radius: 99px;
+      margin-bottom: 0.375rem;
+    }
+    .badge-tp { background: hsl(142 50% 88%); color: hsl(142 60% 28%); }
+    .badge-tn { background: hsl(220 14% 88%); color: hsl(220 14% 32%); }
+    .badge-fp { background: hsl(45 85% 86%); color: hsl(35 70% 30%); }
+    .badge-fn { background: hsl(0 65% 88%); color: hsl(0 60% 38%); }
+    .tile-prob-row { display: flex; align-items: center; gap: 0.375rem; margin-top: 0.25rem; }
+    .tile-prob-bar {
+      flex: 1; height: 4px; border-radius: 2px; background: hsl(var(--muted)); overflow: hidden;
+    }
+    .tile-prob-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+    .tile-prob-val { font-size: 0.6875rem; font-weight: 600; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+    .tile-coords { font-size: 0.625rem; color: hsl(var(--muted-foreground)); margin-top: 0.25rem; font-family: monospace; }
+
+    /* ─── Load more ─── */
+    .load-more-bar {
+      display: flex; align-items: center; justify-content: center;
+      gap: 1rem; margin-top: 1.25rem; padding-top: 1.25rem;
+      border-top: 1px solid hsl(var(--border));
+    }
+    .tile-count-info { font-size: 0.8125rem; color: hsl(var(--muted-foreground)); }
+
+    /* ─── FP alert ─── */
+    .fp-alert {
+      background: hsl(45 90% 96%); border: 1.5px solid hsl(45 80% 75%);
+      border-radius: var(--radius); padding: 0.875rem 1rem;
+      margin-bottom: 1.25rem; font-size: 0.875rem; color: hsl(35 60% 35%);
+      display: flex; gap: 0.625rem; align-items: flex-start;
+    }
+    .fp-alert-icon { font-size: 1.125rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+    /* ─── Map ─── */
+    #eval-map { height: 420px; border-radius: var(--radius); border: 1px solid hsl(var(--border)); }
+
+    /* ─── Status badge ─── */
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 0.375rem;
+      font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; padding: 4px 10px; border-radius: 99px;
+    }
+    .status-pass { background: hsl(142 50% 88%); color: hsl(142 60% 28%); }
+    .status-fail { background: hsl(0 65% 88%); color: hsl(0 60% 38%); }
+
+    /* ─── Spinner ─── */
+    .spinner {
+      width: 24px; height: 24px; border: 3px solid hsl(var(--border));
+      border-top-color: hsl(var(--foreground)); border-radius: 50%;
+      animation: spin 0.7s linear infinite; margin: 2rem auto; display: block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Empty state ─── */
+    .empty-state {
+      text-align: center; padding: 3rem 1rem;
+      color: hsl(var(--muted-foreground)); font-size: 0.9375rem;
+    }
+
+    /* ─── Modal overlay for tile detail ─── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal-box {
+      background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+      border-radius: var(--radius); padding: 1.5rem;
+      max-width: 560px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      transform: translateY(12px); transition: transform 0.2s;
+    }
+    .modal-overlay.open .modal-box { transform: translateY(0); }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .modal-close {
+      background: none; border: none; font-size: 1.25rem; cursor: pointer;
+      color: hsl(var(--muted-foreground)); padding: 0.25rem;
+    }
+    .modal-img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: calc(var(--radius) - 2px); border: 1px solid hsl(var(--border)); margin-bottom: 1rem; }
+    .modal-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .modal-meta-item { background: hsl(var(--muted)); border-radius: calc(var(--radius) - 2px); padding: 0.5rem 0.75rem; }
+    .modal-meta-key { font-size: 0.625rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: hsl(var(--muted-foreground)); }
+    .modal-meta-val { font-size: 0.9375rem; font-weight: 600; color: hsl(var(--foreground)); margin-top: 0.125rem; }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <a class="navbar-brand" href="/static/index.html">Portugal Fire Detection</a>
+    <ul class="navbar-nav">
+      <li class="nav-item"><a href="/static/index.html" class="nav-link">Map View</a></li>
+      <li class="nav-item"><a href="/static/dataset.html" class="nav-link">Dataset</a></li>
+      <li class="nav-item"><a href="/static/inference.html" class="nav-link active">Model Eval</a></li>
+    </ul>
+  </nav>
+
+  <div class="container">
+    <header>
+      <h1>Model Evaluation</h1>
+      <p class="subtitle" id="eval-subtitle">Loading results…</p>
+    </header>
+
+    <!-- ─── Loading spinner ─── -->
+    <div id="loading-state">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- ─── Main content ─── -->
+    <div id="main-content" style="display:none;">
+
+      <!-- Stats bar -->
+      <div class="stats-bar">
+        <div class="stat-item stat-item-primary">
+          <div class="stat-number" id="stat-f1">—</div>
+          <div class="stat-label">F1 Score</div>
+          <div class="stat-detail" id="stat-status-badge"></div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number" id="stat-auc">—</div>
+          <div class="stat-label">AUC-ROC</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number" id="stat-precision">—</div>
+          <div class="stat-label">Precision</div>
+          <div class="stat-detail">No false alarms</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number" id="stat-recall">—</div>
+          <div class="stat-label">Recall</div>
+          <div class="stat-detail">Fire detection rate</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number" id="stat-n">—</div>
+          <div class="stat-label">Test Tiles</div>
+          <div class="stat-detail" id="stat-n-detail"></div>
+        </div>
+      </div>
+
+      <!-- Confusion Matrix + ROC Curve -->
+      <div class="two-col">
+        <!-- Confusion Matrix -->
+        <div class="section">
+          <div class="section-title">Confusion Matrix</div>
+          <div style="font-size:0.75rem; color:hsl(var(--muted-foreground)); margin-bottom:1rem; text-align:center;">
+            Rows = actual label &nbsp;·&nbsp; Columns = model prediction
+          </div>
+          <div class="cm-grid">
+            <!-- headers -->
+            <div></div>
+            <div class="cm-header">Predicted Fire</div>
+            <div class="cm-header">Predicted No Fire</div>
+            <!-- row 1 -->
+            <div class="cm-row-label">Actual Fire</div>
+            <div class="cm-cell cm-tp">
+              <div class="cm-count" id="cm-tp">—</div>
+              <div class="cm-label">TP</div>
+              <div class="cm-desc">Correct fire alert</div>
+            </div>
+            <div class="cm-cell cm-fn">
+              <div class="cm-count" id="cm-fn">—</div>
+              <div class="cm-label">FN</div>
+              <div class="cm-desc">Missed fire</div>
+            </div>
+            <!-- row 2 -->
+            <div class="cm-row-label">Actual No Fire</div>
+            <div class="cm-cell cm-fp">
+              <div class="cm-count" id="cm-fp">—</div>
+              <div class="cm-label">FP</div>
+              <div class="cm-desc">False alarm</div>
+            </div>
+            <div class="cm-cell cm-tn">
+              <div class="cm-count" id="cm-tn">—</div>
+              <div class="cm-label">TN</div>
+              <div class="cm-desc">Correct clear</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ROC Curve -->
+        <div class="section">
+          <div class="section-title">ROC Curve</div>
+          <canvas id="roc-canvas" class="chart-canvas" width="480" height="340"></canvas>
+          <div class="chart-legend">
+            <span><span class="legend-dot" style="background:hsl(28,95%,50%)"></span>Model (AUC = <span id="roc-auc-label">—</span>)</span>
+            <span><span class="legend-dot" style="background:hsl(var(--border));border:1px dashed hsl(var(--muted-foreground))"></span>Random baseline</span>
+            <span><span class="legend-dot" style="background:#e11d48"></span>Operating point (thr=<span id="roc-thr-label">—</span>)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Probability Distribution -->
+      <div class="section">
+        <div class="section-title">Fire Probability Distribution</div>
+        <canvas id="dist-canvas" class="chart-canvas" width="1000" height="240"></canvas>
+        <div class="chart-legend">
+          <span><span class="legend-dot" style="background:#ef4444;opacity:0.75"></span>Actual fire tiles</span>
+          <span><span class="legend-dot" style="background:#22c55e;opacity:0.75"></span>Actual no-fire tiles</span>
+          <span style="margin-left:auto; font-size:0.75rem;">Decision threshold: <strong id="dist-thr-label">—</strong></span>
+        </div>
+      </div>
+
+      <!-- Tile Browser -->
+      <div class="section">
+        <div class="section-title">Test Tile Browser</div>
+
+        <div class="outcome-tabs">
+          <button class="outcome-tab active" data-outcome="">All <span class="badge" id="tab-all-count">—</span></button>
+          <button class="outcome-tab tab-tp" data-outcome="tp">True Positive <span class="badge" id="tab-tp-count">—</span></button>
+          <button class="outcome-tab tab-fp" data-outcome="fp">False Positive <span class="badge" id="tab-fp-count">—</span></button>
+          <button class="outcome-tab tab-fn" data-outcome="fn">False Negative <span class="badge" id="tab-fn-count">—</span></button>
+          <button class="outcome-tab tab-tn" data-outcome="tn">True Negative <span class="badge" id="tab-tn-count">—</span></button>
+        </div>
+
+        <div id="fp-alert" class="fp-alert" style="display:none;">
+          <span class="fp-alert-icon">⚠</span>
+          <div>
+            <strong>Investigating the false positives:</strong> These tiles are labelled
+            <em>no-fire</em> in the ground truth but the model predicts fire with very high
+            confidence (&gt;79%). They likely contain burn scars, post-fire vegetation, or
+            were mislabelled — not true model errors.
+          </div>
+        </div>
+
+        <div id="tile-grid" class="tile-grid"></div>
+        <div class="load-more-bar" id="load-more-bar" style="display:none;">
+          <span class="tile-count-info" id="tile-count-info"></span>
+          <button id="btn-load-more" style="width:auto;">Load more</button>
+        </div>
+        <div id="tile-loading" style="display:none;"><div class="spinner"></div></div>
+      </div>
+
+      <!-- Geographic Map -->
+      <div class="section">
+        <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+          <span>Geographic Distribution of Test Tiles</span>
+          <span style="font-size:0.8125rem; font-weight:400; color:hsl(var(--muted-foreground));">
+            Tiles with known coordinates only (fire tiles)
+          </span>
+        </div>
+        <div class="chart-legend" style="margin-bottom:0.75rem;">
+          <span><span class="legend-dot" style="background:#22c55e"></span>True Positive</span>
+          <span><span class="legend-dot" style="background:#f59e0b"></span>False Positive</span>
+          <span><span class="legend-dot" style="background:#ef4444"></span>False Negative</span>
+          <span><span class="legend-dot" style="background:#6b7280"></span>True Negative</span>
+        </div>
+        <div id="eval-map"></div>
+      </div>
+
+    </div><!-- /main-content -->
+  </div><!-- /container -->
+
+  <!-- Tile detail modal -->
+  <div class="modal-overlay" id="tile-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span id="modal-title" style="font-weight:600; font-size:1rem;"></span>
+        <button class="modal-close" id="modal-close-btn" aria-label="Close">✕</button>
+      </div>
+      <img id="modal-img" class="modal-img" src="" alt="Tile detail" />
+      <div class="modal-meta" id="modal-meta"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // ═══════════════════════════════════════════════════════
+    // State
+    // ═══════════════════════════════════════════════════════
+    let allTiles = [];
+    let metrics = null;
+    let currentOutcome = '';
+    let currentOffset = 0;
+    const PAGE_SIZE = 24;
+
+    // ═══════════════════════════════════════════════════════
+    // Init
+    // ═══════════════════════════════════════════════════════
+    async function init() {
+      try {
+        const [metricsRes, predsRes, rocRes] = await Promise.all([
+          fetch('/api/inference/metrics'),
+          fetch('/api/inference/test-results?limit=1000'),
+          fetch('/api/inference/roc-data'),
+        ]);
+
+        if (!metricsRes.ok) throw new Error('Metrics not available — run evaluate_model.py first');
+        if (!predsRes.ok) throw new Error('Predictions not available — run evaluate_model.py first');
+
+        metrics = await metricsRes.json();
+        const predsData = await predsRes.json();
+        allTiles = predsData.tiles;
+
+        document.getElementById('loading-state').style.display = 'none';
+        document.getElementById('main-content').style.display = 'block';
+
+        renderMetrics(metrics);
+        renderConfusionMatrix(metrics.confusion_matrix);
+
+        if (rocRes.ok) {
+          const rocData = await rocRes.json();
+          renderROC(rocData);
+        }
+
+        renderProbDist(allTiles, metrics.threshold);
+        renderTabCounts(metrics.confusion_matrix);
+        initMap(allTiles);
+        loadTiles();
+
+      } catch (err) {
+        document.getElementById('loading-state').innerHTML =
+          `<div class="empty-state">⚠ ${err.message}</div>`;
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Metrics bar
+    // ═══════════════════════════════════════════════════════
+    function renderMetrics(m) {
+      document.getElementById('stat-f1').textContent = m.f1.toFixed(4);
+      document.getElementById('stat-auc').textContent = m.auc.toFixed(4);
+      document.getElementById('stat-precision').textContent = m.precision.toFixed(4);
+      document.getElementById('stat-recall').textContent = m.recall.toFixed(4);
+      document.getElementById('stat-n').textContent = m.n_samples.toLocaleString();
+      document.getElementById('stat-n-detail').textContent =
+        `${m.class_counts.fire} fire · ${m.class_counts.no_fire} no-fire`;
+
+      const pass = m.f1 >= 0.9 && m.recall >= 0.99;
+      document.getElementById('stat-status-badge').innerHTML =
+        `<span class="status-badge ${pass ? 'status-pass' : 'status-fail'}">${pass ? '✓ Pass' : '✗ Needs work'}</span>`;
+
+      document.getElementById('eval-subtitle').textContent =
+        `Held-out test set · ${m.n_samples} tiles · model ${m.model_version} · threshold ${m.threshold}`;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Confusion matrix
+    // ═══════════════════════════════════════════════════════
+    function renderConfusionMatrix(cm) {
+      document.getElementById('cm-tp').textContent = cm.tp;
+      document.getElementById('cm-fp').textContent = cm.fp;
+      document.getElementById('cm-fn').textContent = cm.fn;
+      document.getElementById('cm-tn').textContent = cm.tn;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // ROC Curve (Canvas)
+    // ═══════════════════════════════════════════════════════
+    function renderROC(rocData) {
+      const canvas = document.getElementById('roc-canvas');
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height;
+      const pad = { top: 20, right: 20, bottom: 48, left: 52 };
+      const cw = W - pad.left - pad.right;
+      const ch = H - pad.top - pad.bottom;
+
+      const bg = getComputedStyle(document.documentElement)
+        .getPropertyValue('--background').trim();
+
+      ctx.clearRect(0, 0, W, H);
+
+      // Background
+      ctx.fillStyle = `hsl(${bg})`;
+      ctx.fillRect(0, 0, W, H);
+
+      // Grid
+      ctx.strokeStyle = 'hsl(30,12%,88%)';
+      ctx.lineWidth = 1;
+      [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+        const x = pad.left + v * cw;
+        const y = pad.top + (1 - v) * ch;
+        ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + ch); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cw, y); ctx.stroke();
+      });
+
+      // Axis labels
+      ctx.fillStyle = 'hsl(25,8%,46%)';
+      ctx.font = '11px Plus Jakarta Sans, sans-serif';
+      ctx.textAlign = 'center';
+      [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+        ctx.fillText(v.toFixed(2), pad.left + v * cw, pad.top + ch + 18);
+      });
+      ctx.textAlign = 'right';
+      [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+        ctx.fillText(v.toFixed(2), pad.left - 8, pad.top + (1 - v) * ch + 4);
+      });
+
+      // Axis titles
+      ctx.textAlign = 'center';
+      ctx.fillText('False Positive Rate', pad.left + cw / 2, H - 6);
+      ctx.save();
+      ctx.translate(14, pad.top + ch / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText('True Positive Rate', 0, 0);
+      ctx.restore();
+
+      // Random baseline
+      ctx.strokeStyle = 'hsl(30,12%,78%)';
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, pad.top + ch);
+      ctx.lineTo(pad.left + cw, pad.top);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // ROC curve
+      const fpr = rocData.fpr, tpr = rocData.tpr;
+      ctx.strokeStyle = 'hsl(28,95%,50%)';
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      fpr.forEach((f, i) => {
+        const x = pad.left + f * cw;
+        const y = pad.top + (1 - tpr[i]) * ch;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // Operating point
+      const opThr = rocData.operating_threshold;
+      const opIdx = rocData.thresholds.reduce((best, t, i) =>
+        Math.abs(t - opThr) < Math.abs(rocData.thresholds[best] - opThr) ? i : best, 0);
+      const opX = pad.left + fpr[opIdx] * cw;
+      const opY = pad.top + (1 - tpr[opIdx]) * ch;
+      ctx.fillStyle = '#e11d48';
+      ctx.beginPath();
+      ctx.arc(opX, opY, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(opX, opY, 6, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // AUC label
+      document.getElementById('roc-auc-label').textContent = rocData.auc.toFixed(4);
+      document.getElementById('roc-thr-label').textContent = opThr;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Probability distribution histogram (Canvas)
+    // ═══════════════════════════════════════════════════════
+    function renderProbDist(tiles, threshold) {
+      const canvas = document.getElementById('dist-canvas');
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height;
+      const pad = { top: 16, right: 20, bottom: 40, left: 48 };
+      const cw = W - pad.left - pad.right;
+      const ch = H - pad.top - pad.bottom;
+      const BINS = 40;
+
+      const fireBins = new Array(BINS).fill(0);
+      const nofireBins = new Array(BINS).fill(0);
+
+      tiles.forEach(t => {
+        const bin = Math.min(Math.floor(t.fire_probability * BINS), BINS - 1);
+        (t.y_true === 1 ? fireBins : nofireBins)[bin]++;
+      });
+
+      const maxVal = Math.max(...fireBins, ...nofireBins);
+
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = `hsl(${getComputedStyle(document.documentElement).getPropertyValue('--background').trim()})`;
+      ctx.fillRect(0, 0, W, H);
+
+      // Grid lines
+      ctx.strokeStyle = 'hsl(30,12%,88%)';
+      ctx.lineWidth = 1;
+      [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+        const y = pad.top + (1 - v) * ch;
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cw, y); ctx.stroke();
+        ctx.fillStyle = 'hsl(25,8%,46%)';
+        ctx.font = '10px Plus Jakarta Sans, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(Math.round(v * maxVal), pad.left - 5, y + 3);
+      });
+
+      // X-axis labels
+      ctx.textAlign = 'center';
+      ctx.font = '10px Plus Jakarta Sans, sans-serif';
+      ctx.fillStyle = 'hsl(25,8%,46%)';
+      [0, 0.2, 0.4, 0.6, 0.8, 1.0].forEach(v => {
+        ctx.fillText(v.toFixed(1), pad.left + v * cw, pad.top + ch + 14);
+      });
+      ctx.fillText('Fire Probability', pad.left + cw / 2, pad.top + ch + 30);
+
+      // Bars - no-fire (green, back)
+      const barW = cw / BINS;
+      nofireBins.forEach((count, i) => {
+        if (count === 0) return;
+        const x = pad.left + i * barW;
+        const barH = (count / maxVal) * ch;
+        ctx.fillStyle = 'rgba(34,197,94,0.6)';
+        ctx.fillRect(x + 1, pad.top + ch - barH, barW - 2, barH);
+      });
+
+      // Bars - fire (red, front)
+      fireBins.forEach((count, i) => {
+        if (count === 0) return;
+        const x = pad.left + i * barW;
+        const barH = (count / maxVal) * ch;
+        ctx.fillStyle = 'rgba(239,68,68,0.7)';
+        ctx.fillRect(x + 1, pad.top + ch - barH, barW - 2, barH);
+      });
+
+      // Threshold line
+      const thrX = pad.left + threshold * cw;
+      ctx.strokeStyle = '#6366f1';
+      ctx.setLineDash([5, 3]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(thrX, pad.top);
+      ctx.lineTo(thrX, pad.top + ch);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#6366f1';
+      ctx.font = '11px Plus Jakarta Sans, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`thr=${threshold}`, thrX, pad.top - 4);
+
+      document.getElementById('dist-thr-label').textContent = threshold;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Tab counts
+    // ═══════════════════════════════════════════════════════
+    function renderTabCounts(cm) {
+      const total = cm.tp + cm.fp + cm.fn + cm.tn;
+      document.getElementById('tab-all-count').textContent = total;
+      document.getElementById('tab-tp-count').textContent = cm.tp;
+      document.getElementById('tab-fp-count').textContent = cm.fp;
+      document.getElementById('tab-fn-count').textContent = cm.fn;
+      document.getElementById('tab-tn-count').textContent = cm.tn;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Tile Browser
+    // ═══════════════════════════════════════════════════════
+    function filteredTiles() {
+      if (!currentOutcome) return allTiles;
+      return allTiles.filter(t => t.outcome === currentOutcome);
+    }
+
+    function loadTiles(append = false) {
+      const tiles = filteredTiles();
+      const page = tiles.slice(currentOffset, currentOffset + PAGE_SIZE);
+
+      document.getElementById('fp-alert').style.display =
+        currentOutcome === 'fp' && tiles.length > 0 ? 'flex' : 'none';
+
+      if (!append) {
+        document.getElementById('tile-grid').innerHTML = '';
+      }
+
+      if (tiles.length === 0) {
+        document.getElementById('tile-grid').innerHTML =
+          '<div class="empty-state">No tiles for this category.</div>';
+        document.getElementById('load-more-bar').style.display = 'none';
+        return;
+      }
+
+      page.forEach(tile => {
+        document.getElementById('tile-grid').appendChild(buildTileCard(tile));
+      });
+
+      currentOffset += page.length;
+      const remaining = tiles.length - currentOffset;
+      const bar = document.getElementById('load-more-bar');
+      if (remaining > 0) {
+        bar.style.display = 'flex';
+        document.getElementById('tile-count-info').textContent =
+          `Showing ${currentOffset} of ${tiles.length}`;
+        document.getElementById('btn-load-more').textContent = `Load ${Math.min(remaining, PAGE_SIZE)} more`;
+      } else {
+        bar.style.display = tiles.length > PAGE_SIZE ? 'flex' : 'none';
+        document.getElementById('tile-count-info').textContent = `All ${tiles.length} tiles shown`;
+        document.getElementById('btn-load-more').style.display = 'none';
+      }
+    }
+
+    function buildTileCard(tile) {
+      const card = document.createElement('div');
+      card.className = 'tile-card';
+      card.title = tile.tile_id;
+
+      const probPct = Math.round(tile.fire_probability * 100);
+      const probColor = tile.fire_probability >= 0.7
+        ? '#ef4444'
+        : tile.fire_probability >= 0.4
+          ? '#f59e0b'
+          : '#22c55e';
+      const outcomeLabel = { tp: 'True Pos', fp: 'False Pos', fn: 'False Neg', tn: 'True Neg' };
+      const coordText = (tile.lat != null && tile.lon != null)
+        ? `${tile.lat.toFixed(3)}N, ${Math.abs(tile.lon).toFixed(3)}W`
+        : 'coords unavailable';
+
+      card.innerHTML = `
+        <img class="tile-card-img" src="/api/inference/tile-image/${encodeURIComponent(tile.tile_id)}"
+             alt="Tile ${tile.tile_id}" loading="lazy" />
+        <div class="tile-card-body">
+          <span class="tile-outcome-badge badge-${tile.outcome}">${outcomeLabel[tile.outcome]}</span>
+          <div class="tile-prob-row">
+            <div class="tile-prob-bar">
+              <div class="tile-prob-fill" style="width:${probPct}%; background:${probColor};"></div>
+            </div>
+            <span class="tile-prob-val">${(tile.fire_probability * 100).toFixed(1)}%</span>
+          </div>
+          <div class="tile-coords">${coordText}</div>
+        </div>
+      `;
+
+      card.addEventListener('click', () => openModal(tile));
+      return card;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Tile detail modal
+    // ═══════════════════════════════════════════════════════
+    function openModal(tile) {
+      const outcomeLabel = { tp: 'True Positive', fp: 'False Positive', fn: 'False Negative', tn: 'True Negative' };
+      document.getElementById('modal-title').innerHTML =
+        `<span class="tile-outcome-badge badge-${tile.outcome}" style="font-size:0.75rem;">${outcomeLabel[tile.outcome]}</span>`;
+      document.getElementById('modal-img').src =
+        `/api/inference/tile-image/${encodeURIComponent(tile.tile_id)}?size=512`;
+
+      document.getElementById('modal-meta').innerHTML = `
+        <div class="modal-meta-item">
+          <div class="modal-meta-key">Fire Probability</div>
+          <div class="modal-meta-val" style="color:${tile.fire_probability>=0.7?'#ef4444':tile.fire_probability>=0.4?'#f59e0b':'#22c55e'}">
+            ${(tile.fire_probability * 100).toFixed(2)}%
+          </div>
+        </div>
+        <div class="modal-meta-item">
+          <div class="modal-meta-key">Ground Truth</div>
+          <div class="modal-meta-val">${tile.y_true === 1 ? '🔥 Fire' : '✓ No fire'}</div>
+        </div>
+        <div class="modal-meta-item">
+          <div class="modal-meta-key">Predicted</div>
+          <div class="modal-meta-val">${tile.y_pred === 1 ? '🔥 Fire' : '✓ No fire'}</div>
+        </div>
+        <div class="modal-meta-item">
+          <div class="modal-meta-key">Location</div>
+          <div class="modal-meta-val" style="font-size:0.8125rem;">
+            ${tile.lat != null ? `${tile.lat.toFixed(4)}N, ${Math.abs(tile.lon).toFixed(4)}W` : '—'}
+          </div>
+        </div>
+        <div class="modal-meta-item" style="grid-column:1/-1;">
+          <div class="modal-meta-key">Tile ID</div>
+          <div class="modal-meta-val" style="font-size:0.65rem; font-family:monospace; word-break:break-all;">${tile.tile_id}</div>
+        </div>
+      `;
+
+      document.getElementById('tile-modal').classList.add('open');
+    }
+
+    document.getElementById('modal-close-btn').addEventListener('click', () => {
+      document.getElementById('tile-modal').classList.remove('open');
+    });
+    document.getElementById('tile-modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('tile-modal'))
+        document.getElementById('tile-modal').classList.remove('open');
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') document.getElementById('tile-modal').classList.remove('open');
+    });
+
+    // ═══════════════════════════════════════════════════════
+    // Outcome tab switching
+    // ═══════════════════════════════════════════════════════
+    document.querySelectorAll('.outcome-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.outcome-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentOutcome = btn.dataset.outcome;
+        currentOffset = 0;
+        document.getElementById('btn-load-more').style.display = '';
+        loadTiles(false);
+      });
+    });
+
+    document.getElementById('btn-load-more').addEventListener('click', () => {
+      loadTiles(true);
+    });
+
+    // ═══════════════════════════════════════════════════════
+    // Leaflet map
+    // ═══════════════════════════════════════════════════════
+    function initMap(tiles) {
+      const map = L.map('eval-map', {
+        center: [39.5, -8.0],
+        zoom: 6,
+        zoomControl: true,
+      });
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 18,
+      }).addTo(map);
+
+      const outcomeColors = { tp: '#22c55e', fp: '#f59e0b', fn: '#ef4444', tn: '#6b7280' };
+
+      const tilesWithCoords = tiles.filter(t => t.lat != null && t.lon != null);
+
+      tilesWithCoords.forEach(tile => {
+        const color = outcomeColors[tile.outcome] || '#999';
+        const marker = L.circleMarker([tile.lat, tile.lon], {
+          radius: 7,
+          fillColor: color,
+          color: 'white',
+          weight: 1.5,
+          fillOpacity: 0.85,
+        });
+
+        const outcomeLabel = { tp: 'True Positive', fp: 'False Positive', fn: 'False Negative', tn: 'True Negative' };
+        marker.bindPopup(`
+          <div style="font-family:'Plus Jakarta Sans',sans-serif; font-size:13px; min-width:180px;">
+            <div style="font-weight:600; margin-bottom:6px; color:${color};">${outcomeLabel[tile.outcome]}</div>
+            <div>P(fire) = <strong>${(tile.fire_probability * 100).toFixed(1)}%</strong></div>
+            <div style="margin-top:4px; font-size:11px; color:#666;">${tile.lat.toFixed(4)}N, ${Math.abs(tile.lon).toFixed(4)}W</div>
+            <div style="margin-top:4px; font-size:10px; color:#888; word-break:break-all;">${tile.tile_id.substring(0, 36)}…</div>
+          </div>
+        `);
+
+        marker.on('click', () => openModal(tile));
+        marker.addTo(map);
+      });
+
+      // Fit to Portugal if we have points, else keep default
+      if (tilesWithCoords.length > 0) {
+        try {
+          const lats = tilesWithCoords.map(t => t.lat);
+          const lons = tilesWithCoords.map(t => t.lon);
+          map.fitBounds([[Math.min(...lats) - 0.3, Math.min(...lons) - 0.3],
+                         [Math.max(...lats) + 0.3, Math.max(...lons) + 0.3]]);
+        } catch (_) {}
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Boot
+    // ═══════════════════════════════════════════════════════
+    init();
+  </script>
+</body>
+</html>

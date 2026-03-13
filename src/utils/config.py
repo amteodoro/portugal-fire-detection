@@ -1,27 +1,37 @@
-from pydantic import BaseModel
-import os
+from pydantic_settings import BaseSettings
 
 
-class Settings(BaseModel):
-    APP_NAME: str = os.getenv("APP_NAME", "Portugal Fire Detection")
-    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "*")
-    PORTUGAL_BBOX: str = os.getenv("PORTUGAL_BBOX", "-9.5,36.8,-6.0,42.3")
-    SCHEDULER_ENABLED: bool = os.getenv("SCHEDULER_ENABLED", "false").lower() == "true"
-    TIMEZONE: str = os.getenv("TIMEZONE", "Europe/Lisbon")
-    FIRMS_API_KEY: str = os.getenv("FIRMS_API_KEY", "")
-    EUMETSAT_WMS_URL: str = os.getenv("EUMETSAT_WMS_URL", "")
-    EUMETSAT_FRP_LAYER: str = os.getenv("EUMETSAT_FRP_LAYER", "")
-    EUMETSAT_TOKEN: str = os.getenv("EUMETSAT_TOKEN", "")
-    STAC_CATALOG_URL: str = os.getenv(
-        "STAC_CATALOG_URL", "https://earth-search.aws.element84.com/v1"
-    )
-    COPERNICUS_CLIENT_ID: str = os.getenv("COPERNICUS_CLIENT_ID", "")
-    COPERNICUS_CLIENT_SECRET: str = os.getenv("COPERNICUS_CLIENT_SECRET", "")
-    COPERNICUS_USERNAME: str = os.getenv("COPERNICUS_USERNAME", "")
-    COPERNICUS_PASSWORD: str = os.getenv("COPERNICUS_PASSWORD", "")
-    FIRMS_TTL: int = int(os.getenv("FIRMS_TTL", "900"))
-    EUMETSAT_TTL: int = int(os.getenv("EUMETSAT_TTL", "1800"))
-    S2_TTL: int = int(os.getenv("S2_TTL", "86400"))
+class Settings(BaseSettings):
+    APP_NAME: str = "Portugal Fire Detection"
+    CORS_ORIGINS: str = ""
+    PORTUGAL_BBOX: str = "-9.5,36.8,-6.0,42.3"
+    SCHEDULER_ENABLED: bool = False
+    TIMEZONE: str = "Europe/Lisbon"
+    FIRMS_API_KEY: str = ""
+    EUMETSAT_WMS_URL: str = ""
+    EUMETSAT_FRP_LAYER: str = ""
+    EUMETSAT_TOKEN: str = ""
+    STAC_CATALOG_URL: str = "https://earth-search.aws.element84.com/v1"
+    COPERNICUS_CLIENT_ID: str = ""
+    COPERNICUS_CLIENT_SECRET: str = ""
+    COPERNICUS_USERNAME: str = ""
+    COPERNICUS_PASSWORD: str = ""
+    COPERNICUS_ACCESS_TOKEN: str = ""
+    COPERNICUS_S3_ACCESS_KEY: str = ""
+    COPERNICUS_S3_SECRET_KEY: str = ""
+    FIRMS_TTL: int = 900
+    EUMETSAT_TTL: int = 1800
+    S2_TTL: int = 86400
+    MODEL_CHECKPOINT_PATH: str = "ml/training/checkpoints/best_model.pth"
+    APP_ENV: str = "development"
+    DATABASE_URL: str = ""
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASS: str = ""
+    FROM_EMAIL: str = "alerts@fire-detection.local"
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()

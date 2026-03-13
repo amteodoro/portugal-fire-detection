@@ -33,7 +33,7 @@ class TestGeoUtils:
         """Test parsing invalid bbox raises error."""
         from src.utils.geo import parse_bbox
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             parse_bbox("-9.5,36.8,-6.0")  # Only 3 values
 
     def test_parse_bbox_non_numeric(self):

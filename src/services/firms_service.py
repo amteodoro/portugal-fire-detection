@@ -1,10 +1,13 @@
 import csv
 import io
+import logging
 from datetime import datetime, timezone
 from src.utils.config import settings
 from src.utils.http import fetch
 from src.utils.caching import cache_get, cache_set, file_cache_load, file_cache_store
 from src.utils.geo import parse_bbox
+
+logger = logging.getLogger(__name__)
 
 FIRMS_COUNTRY_BASE = "https://firms.modaps.eosdis.nasa.gov/api/country/csv"
 FIRMS_AREA_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
@@ -32,13 +35,13 @@ def _parse_csv(product: str, content: bytes) -> list[dict]:
 
     # Check if response is an error message
     if text.startswith("error") or "error" in text.lower()[:100]:
-        print(f"FIRMS API Error: {text[:200]}")
+        logger.warning("FIRMS API returned an error response")
         return []
 
     # Check if response is empty or just headers
     lines = text.strip().split("\n")
     if len(lines) <= 1:
-        print("FIRMS API returned no data (only headers or empty)")
+        logger.info("FIRMS API returned no data (only headers or empty)")
         return []
 
     reader = csv.DictReader(io.StringIO(text))
@@ -76,9 +79,9 @@ def _parse_csv(product: str, content: bytes) -> list[dict]:
                     },
                 }
             )
-        except (ValueError, TypeError, KeyError) as e:
+        except (ValueError, TypeError, KeyError):
             # Skip malformed rows
-            print(f"Skipping malformed row {i}: {e}")
+            logger.debug("Skipping malformed row %d", i)
             continue
 
     return rows
@@ -130,13 +133,75 @@ async def fetch_bbox(product: str, days: int = 1, bbox_override: str = None) -> 
     # FIRMS NRT API supports 1-10 days only via the /area/{days} endpoint
     # For historical data beyond 10 days, the Archive API would be needed (different endpoints/auth)
     url = f"{FIRMS_AREA_BASE}/{api_key}/{product_key}/{area_spec}/{days}"
-    print(f"Fetching FIRMS data from: {url[:100]}...")
+    logger.info("Fetching FIRMS data: product=%s, days=%d", product_key, days)
     content = await fetch(url)
-    print(f"FIRMS response size: {len(content)} bytes")
+    logger.debug("FIRMS response size: %d bytes", len(content))
     features = _parse_csv(product, content)
-    print(f"Parsed {len(features)} fire features")
+    logger.info("Parsed %d fire features", len(features))
 
     fc = {"type": "FeatureCollection", "features": features}
     file_cache_store("/app/data/firms", fk, fc)
     cache_set(ck, fc, ttl=settings.FIRMS_TTL)
+
+    # Persist to database when configured (fire-and-forget, non-critical)
+    from src.db.session import is_configured
+    if is_configured():
+        try:
+            await _upsert_fire_events(features, bbox_str)
+        except Exception as exc:
+            logger.warning("DB upsert failed (non-critical): %s", exc)
+
     return fc
+
+
+async def _upsert_fire_events(features: list[dict], region: str) -> None:
+    """Upsert FIRMS fire events into the database, deduplicated by source+location+date."""
+    from src.db.session import get_session
+    from src.db.models import FireEvent
+    from sqlalchemy import text
+
+    async with get_session() as session:
+        for f in features:
+            props = f["properties"]
+            lon, lat = f["geometry"]["coordinates"]
+            detected_at_str = props.get("acq_time", "")
+            try:
+                detected_at = datetime.fromisoformat(
+                    detected_at_str.replace("Z", "+00:00")
+                )
+            except (ValueError, TypeError):
+                detected_at = datetime.now(timezone.utc)
+
+            # Deduplicate: skip if same source + location (rounded) + date already exists
+            date_only = detected_at.date().isoformat()
+            lat_r = round(lat, 4)
+            lon_r = round(lon, 4)
+            exists = await session.execute(
+                text(
+                    "SELECT 1 FROM fire_events WHERE source = :src"
+                    " AND detected_at::date = :dt"
+                    " AND ST_DWithin(location::geography,"
+                    "   ST_MakePoint(:lon, :lat)::geography, 500)"
+                    " LIMIT 1"
+                ),
+                {"src": props["source"], "dt": date_only, "lat": lat_r, "lon": lon_r},
+            )
+            if exists.fetchone():
+                continue
+
+            conf = props.get("confidence")
+            conf_str = None
+            if conf is not None:
+                conf_str = str(int(conf)) if conf > 1 else str(conf)
+
+            session.add(
+                FireEvent(
+                    source=props["source"],
+                    detected_at=detected_at,
+                    location=f"SRID=4326;POINT({lon} {lat})",
+                    frp=props.get("frp"),
+                    confidence=conf_str,
+                    region=region,
+                )
+            )
+        await session.commit()

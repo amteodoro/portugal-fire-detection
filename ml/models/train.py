@@ -22,6 +22,15 @@ import yaml
 from ml.models.model import create_model
 from ml.models.dataset import create_dataloaders
 
+def _create_model_for_config(config: dict):
+    """Create the right model based on config['model_type']."""
+    model_type = config.get("model_type", "mobilevit")
+    if model_type == "multimodal":
+        from ml.models.multimodal_model import create_multimodal_model
+        return create_multimodal_model(config)
+    return create_model(config)
+
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -212,12 +221,26 @@ class FireDetectionTrainer:
     
     def save_checkpoint(self, model, optimizer, epoch, metrics, is_best=False):
         """Save model checkpoint."""
+        from datetime import datetime as _dt
+        training_metadata = {
+            "training_date": _dt.utcnow().isoformat() + "Z",
+            "epoch": epoch,
+            "model_type": self.config.get("model_type", "mobilevit"),
+            "val_metrics": metrics,
+            "data_config": {
+                "processed_dir": self.config.get("data", {}).get("processed_dir"),
+                "train_split": self.config.get("dataset", {}).get("train_split"),
+                "val_split": self.config.get("dataset", {}).get("val_split"),
+                "test_split": self.config.get("dataset", {}).get("test_split"),
+            },
+        }
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'metrics': metrics,
-            'config': self.config
+            'config': self.config,
+            'training_metadata': training_metadata,
         }
         
         # Save latest checkpoint
@@ -346,6 +369,12 @@ def main():
     
     parser = argparse.ArgumentParser(description="Train fire detection model")
     parser.add_argument('--config', default='ml/configs/config.yaml', help='Config file path')
+    parser.add_argument(
+        '--model-type',
+        choices=['mobilevit', 'multimodal'],
+        default=None,
+        help='Model type (overrides config model_type)',
+    )
     parser.add_argument('--device', default=None, help='Device (cuda/cpu)')
     
     # Training overrides
@@ -378,7 +407,19 @@ def main():
         config['logging']['checkpoint_dir'] = args.checkpoint_dir
     if args.experiment_name is not None:
         config['logging']['experiment_name'] = args.experiment_name
-    
+    if args.model_type is not None:
+        config['model_type'] = args.model_type
+        if args.model_type == 'multimodal' and args.config == 'ml/configs/config.yaml':
+            # Auto-switch to multimodal config default
+            import os
+            if os.path.exists('ml/configs/multimodal_config.yaml'):
+                with open('ml/configs/multimodal_config.yaml') as f2:
+                    import yaml as _yaml
+                    mm_cfg = _yaml.safe_load(f2)
+                mm_cfg.update({k: config[k] for k in config if k in mm_cfg})
+                config = mm_cfg
+                config['model_type'] = 'multimodal'
+
     # Override device if specified
     if args.device:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.device if args.device == 'cuda' else ''

@@ -1,0 +1,59 @@
+# Multi-Modal Fire Detection Configuration
+# Architecture: MobileViT (S2) + CNN (S3) dual-encoder
+
+model_type: multimodal
+
+multimodal_model:
+  s2_model_name: "apple/mobilevit-small"
+  s2_channels: 4           # B04, B08, B11, B12
+  s3_channels: 2           # F1 (3.74µm), F2 (10.85µm) SLSTR thermal bands
+  num_classes: 2
+
+data:
+  raw_dir: "data/ml/sentinel2"
+  sentinel3_dir: "data/ml/sentinel3"
+  processed_dir: "ml/data/processed"
+  tiles_dir: "ml/data/tiles"
+  labels_dir: "ml/data/labels"
+  colocated_dir: "ml/data/colocated"   # paired S2+S3 tiles (from generate_colocated_pairs.py)
+  firms_cache: "data/firms"
+
+region:
+  name: "Portugal"
+  bbox: [-9.5, 36.8, -6.0, 42.3]
+
+dataset:
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+  batch_size: 16
+  num_workers: 4
+  pin_memory: true
+  # When S3 pair unavailable for a tile, use S2-only mode (s3=None)
+  s3_fallback: true
+
+training:
+  epochs: 50
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  optimizer: "adamw"
+  scheduler: "cosine"
+  warmup_epochs: 3
+  patience: 10
+  min_delta: 0.001
+  mixed_precision: false
+  gradient_clip: 1.0
+  seed: 42
+
+  # Class weights for imbalanced dataset
+  class_weights: [1.0, 3.0]   # [no_fire, fire] — fire class up-weighted
+
+inference:
+  confidence_threshold: 0.7
+
+logging:
+  checkpoint_dir: "ml/training/checkpoints"
+  log_dir: "ml/training/logs"
+  experiment_name: "multimodal_fire_detection"
+  save_best_only: true
+  log_interval: 10

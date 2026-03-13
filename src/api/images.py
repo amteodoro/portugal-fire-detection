@@ -1,13 +1,17 @@
+from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-import os
 
 router = APIRouter()
+
+BASE_DIR = Path("/app/data").resolve()
 
 
 @router.get("/{folder}/{filename}")
 async def get_image(folder: str, filename: str):
-    path = f"/app/data/{folder}/{filename}"
-    if not os.path.exists(path):
+    requested = (BASE_DIR / folder / filename).resolve()
+    if not str(requested).startswith(str(BASE_DIR) + "/"):
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not requested.exists():
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(path)
+    return FileResponse(requested)

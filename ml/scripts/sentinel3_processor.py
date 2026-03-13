@@ -144,25 +144,38 @@ class Sentinel3Processor:
         Returns:
             Dictionary with band data and metadata, or None
         """
-        # Find ZIP file - may be directly in scene_path or in a same-named subdirectory
-        zip_files = list(scene_path.glob('*.zip'))
-        
-        if not zip_files:
-            # Check for nested structure: scene_id/scene_id.zip
-            zip_files = list(scene_path.glob('**/*.zip'))
-        
-        if not zip_files:
+        # Determine the .SEN3 directory to read from.
+        # Three supported layouts:
+        #   1. Files already extracted flat in scene_path/ (S3 download)
+        #   2. scene_path/*.SEN3/ subdirectory
+        #   3. scene_path/*.zip  (legacy HTTP download — extract first)
+        sen3_dir: Optional[Path] = None
+        cleanup_dir: Optional[Path] = None  # temp dir to delete after reading
+
+        # Layout 1: flat extracted files (F1_BT_fn.nc present directly)
+        if any(scene_path.glob('F*.nc')) or any(scene_path.glob('S*.nc')):
+            sen3_dir = scene_path
+            logger.debug(f"Using extracted scene directory: {sen3_dir}")
+
+        # Layout 2: .SEN3 subdirectory
+        if sen3_dir is None:
+            sen3_subdirs = list(scene_path.glob('*.SEN3'))
+            if sen3_subdirs:
+                sen3_dir = sen3_subdirs[0]
+                logger.debug(f"Found .SEN3 subdirectory: {sen3_dir}")
+
+        # Layout 3: ZIP archive
+        if sen3_dir is None:
+            zip_files = list(scene_path.glob('*.zip')) or list(scene_path.glob('**/*.zip'))
+            if zip_files:
+                sen3_dir = self.extract_zip(zip_files[0])
+                cleanup_dir = sen3_dir.parent if sen3_dir else None
+                logger.debug(f"Extracted ZIP: {zip_files[0]}")
+
+        if sen3_dir is None:
             logger.error(f"No ZIP file found in {scene_path} or subdirectories")
             return None
-        
-        zip_path = zip_files[0]
-        logger.debug(f"Found ZIP: {zip_path}")
-        
-        # Extract ZIP
-        sen3_dir = self.extract_zip(zip_path)
-        if not sen3_dir:
-            return None
-        
+
         try:
             bands_data = {}
             
@@ -217,9 +230,9 @@ class Sentinel3Processor:
             return bands_data
         
         finally:
-            # Cleanup temporary directory
-            if sen3_dir and sen3_dir.exists():
-                shutil.rmtree(sen3_dir.parent)
+            # Only clean up temp dirs created during ZIP extraction
+            if cleanup_dir and cleanup_dir.exists():
+                shutil.rmtree(cleanup_dir)
     
     def find_nearest_pixel(
         self,

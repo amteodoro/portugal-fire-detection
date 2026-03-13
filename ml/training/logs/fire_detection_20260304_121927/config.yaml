@@ -1,0 +1,124 @@
+augmentation:
+  brightness: 0.2
+  contrast: 0.2
+  enabled: true
+  flip_horizontal: true
+  flip_vertical: true
+  rotation: true
+data:
+  firms_cache: data/firms
+  labels_dir: ml/data/labels
+  processed_dir: ml/data/processed
+  raw_dir: data/ml/sentinel2
+  sentinel3_dir: data/ml/sentinel3
+  tiles_dir: ml/data/tiles
+firms:
+  min_confidence: 50
+  spatial_buffer_km: 5
+  temporal_window_days: 3
+inference:
+  batch_size: 16
+  confidence_threshold: 0.7
+  nms_threshold: 0.5
+logging:
+  checkpoint_dir: ml/training/checkpoints
+  experiment_name: fire_detection
+  log_dir: ml/training/logs
+  save_top_k: 3
+  wandb:
+    enabled: false
+    entity: null
+    project: portugal-fire-detection
+loss:
+  alpha: 0.25
+  gamma: 2.0
+  type: focal
+metrics:
+- accuracy
+- precision
+- recall
+- f1
+- roc_auc
+model:
+  dropout: 0.1
+  freeze_backbone: false
+  input_channels: 4
+  model_name: apple/mobilevit-small
+  num_classes: 2
+  pretrained: true
+  type: huggingface_transformer
+region:
+  bbox:
+  - -9.5
+  - 36.8
+  - -6.0
+  - 42.3
+  name: Portugal
+sentinel2:
+  band_names:
+  - red
+  - nir
+  - swir1
+  - swir2
+  band_save_names:
+  - B04
+  - B08
+  - B11
+  - B12
+  bands:
+  - red
+  - nir
+  - swir16
+  - swir22
+  collection: sentinel-2-l2a
+  max_cloud_cover: 20
+  resolution: 20
+  rgb_bands:
+  - blue
+  - green
+  - red
+  rgb_save_names:
+  - B02
+  - B03
+  - B04
+sentinel3:
+  collection: sentinel-3
+  enable_frp: true
+  olci_bands:
+  - Oa08
+  - Oa17
+  - Oa21
+  resolution: 1000
+  slstr_bands:
+    swir:
+    - S5
+    - S6
+    thermal:
+    - F1
+    - F2
+    visible:
+    - S1
+    - S2
+    - S3
+splits:
+  random_seed: 42
+  test: 0.15
+  train: 0.7
+  val: 0.15
+tiles:
+  fire_tile_buffer: 2
+  negative_sample_ratio: 3
+  size: 128
+  stride: 128
+time_range:
+  end_date: '2024-12-31'
+  start_date: '2023-01-01'
+training:
+  batch_size: 32
+  early_stopping:
+    min_delta: 0.001
+    patience: 10
+  epochs: 100
+  learning_rate: 0.001
+  optimizer: adamw
+  scheduler: cosine
