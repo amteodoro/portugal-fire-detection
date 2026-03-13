@@ -1,6 +1,8 @@
 # Large data directories (mounted as volumes at runtime)
 data/
-ml/
+# Exclude large ml artifacts — Python source is still copied for tests
+ml/data/
+ml/training/
 
 # Git
 .git/

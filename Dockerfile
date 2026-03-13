@@ -23,9 +23,10 @@ RUN uv sync --frozen --group dev || uv sync --group dev
 # Ensure torch and ML dependencies are available in PATH
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Copy source and tests (data and ml are mounted as volumes at runtime)
+# Copy source, tests, and ml Python modules (data/training dirs excluded via .dockerignore)
 COPY src ./src
 COPY tests ./tests
+COPY ml ./ml
 RUN mkdir -p /app/data
 
 EXPOSE 8000
