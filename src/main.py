@@ -75,7 +75,17 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     async def health():
-        return {"status": "ok"}
+        from src.utils.demo import is_demo
+        body = {"status": "ok", "demo": is_demo()}
+        if is_demo():
+            try:
+                from src.services.snapshot import read_manifest
+                manifest = read_manifest()
+                if manifest:
+                    body["snapshot_range"] = manifest.get("snapshot_range")
+            except ImportError:
+                pass
+        return body
 
     @app.get("/api/config")
     async def config():
