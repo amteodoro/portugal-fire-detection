@@ -20,3 +20,4 @@ models/
 .agents/
 *.md
 !README.md
+!docs/**/*.md
