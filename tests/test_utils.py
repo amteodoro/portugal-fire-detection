@@ -126,3 +126,18 @@ class TestCachingUtils:
 
         assert os.path.exists(cache_dir)
         assert os.path.exists(os.path.join(cache_dir, "test_key.json"))
+
+
+def test_demo_mode_defaults_false(monkeypatch):
+    monkeypatch.delenv("DEMO_MODE", raising=False)
+    from src.utils.config import Settings
+    s = Settings()
+    assert s.DEMO_MODE is False
+    assert s.SNAPSHOT_DIR == "data/snapshot"
+
+
+def test_demo_mode_can_be_enabled(monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "true")
+    from src.utils.config import Settings
+    s = Settings()
+    assert s.DEMO_MODE is True
