@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -32,7 +31,6 @@ def _read_json(rel: str) -> Optional[dict | list]:
         return None
 
 
-@lru_cache(maxsize=1)
 def read_manifest() -> dict:
     return _read_json("manifest.json") or {}
 
