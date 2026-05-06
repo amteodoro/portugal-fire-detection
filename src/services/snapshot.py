@@ -110,3 +110,69 @@ def tile_npy_path(tile_id: str) -> Optional[Path]:
 def tile_png_path(tile_id: str) -> Optional[Path]:
     p = _root() / "tiles" / f"{tile_id}.png"
     return p if p.exists() else None
+
+
+async def read_history(
+    start: str,
+    end: str,
+    bbox: Optional[tuple[float, float, float, float]] = None,
+    source: Optional[str] = None,
+    limit: int = 5000,
+) -> dict:
+    """Query the bundled fires.sqlite snapshot.
+
+    Args mirror /api/firms/history's query params. Returns the same
+    GeoJSON FeatureCollection shape so the API handler can return our
+    result unchanged.
+    """
+    import aiosqlite
+
+    db_path = _root() / "fires.sqlite"
+    if not db_path.exists():
+        return {"type": "FeatureCollection", "features": []}
+
+    sql = (
+        "SELECT id, source, detected_at, frp, confidence, region, lat, lon"
+        " FROM fire_events"
+        " WHERE date(detected_at) BETWEEN :start AND :end"
+    )
+    params: dict = {"start": start, "end": end}
+
+    if source:
+        sql += " AND source = :source"
+        params["source"] = source.upper()
+    if bbox:
+        sql += (
+            " AND lon BETWEEN :lon_min AND :lon_max"
+            " AND lat BETWEEN :lat_min AND :lat_max"
+        )
+        lon_min, lat_min, lon_max, lat_max = bbox
+        params.update(
+            lon_min=lon_min, lat_min=lat_min,
+            lon_max=lon_max, lat_max=lat_max,
+        )
+
+    sql += " ORDER BY detected_at DESC LIMIT :limit"
+    params["limit"] = limit
+
+    async with aiosqlite.connect(db_path) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(sql, params) as cur:
+            rows = await cur.fetchall()
+
+    features = [
+        {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [r["lon"], r["lat"]]},
+            "properties": {
+                "id": r["id"],
+                "source": r["source"],
+                "detected_at": r["detected_at"],
+                "frp": r["frp"],
+                "confidence": r["confidence"],
+                "region": r["region"],
+            },
+        }
+        for r in rows
+    ]
+    return {"type": "FeatureCollection", "features": features}

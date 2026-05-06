@@ -285,3 +285,74 @@ def test_read_aois(fake_snapshot):
     aois = fake_snapshot.read_aois()
     assert len(aois) == 1
     assert aois[0]["name"].startswith("Demo AOI")
+
+
+import sqlite3
+from datetime import datetime
+
+
+@pytest.fixture
+def fake_history_db(tmp_path, monkeypatch):
+    snap = tmp_path / "snapshot"
+    snap.mkdir()
+    db = snap / "fires.sqlite"
+    conn = sqlite3.connect(db)
+    conn.execute("""
+      CREATE TABLE fire_events (
+        id INTEGER PRIMARY KEY,
+        source TEXT, detected_at TEXT,
+        lat REAL, lon REAL,
+        frp REAL, confidence TEXT, region TEXT
+      )
+    """)
+    rows = [
+      (None, "VIIRS", "2024-08-15T12:30:00Z", 39.5, -7.5, 12.0, "90", "mainland"),
+      (None, "MODIS", "2024-08-10T11:00:00Z", 40.0, -8.0,  8.0, "70", "mainland"),
+      (None, "VIIRS", "2024-08-15T13:00:00Z", 40.5, -16.5, 5.0, "60", "azores"),
+    ]
+    conn.executemany(
+      "INSERT INTO fire_events VALUES (?,?,?,?,?,?,?,?)", rows
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv("SNAPSHOT_DIR", str(snap))
+    import importlib
+    from src.utils import config as cfg
+    importlib.reload(cfg)
+    from src.services import snapshot as snap_mod
+    importlib.reload(snap_mod)
+    return snap_mod
+
+
+async def test_read_history_filters_by_date(fake_history_db):
+    fc = await fake_history_db.read_history(
+        start="2024-08-15", end="2024-08-15"
+    )
+    assert len(fc["features"]) == 2  # both 8/15 entries
+
+
+async def test_read_history_filters_by_source(fake_history_db):
+    fc = await fake_history_db.read_history(
+        start="2024-08-01", end="2024-08-31", source="MODIS"
+    )
+    assert len(fc["features"]) == 1
+    assert fc["features"][0]["properties"]["source"] == "MODIS"
+
+
+async def test_read_history_filters_by_bbox(fake_history_db):
+    # Mainland-only bbox excludes the azores point
+    fc = await fake_history_db.read_history(
+        start="2024-08-01", end="2024-08-31",
+        bbox=(-10.0, 36.0, -6.0, 42.0),
+    )
+    sources = [f["properties"]["source"] for f in fc["features"]]
+    assert "VIIRS" in sources and "MODIS" in sources
+    assert len(fc["features"]) == 2
+
+
+async def test_read_history_respects_limit(fake_history_db):
+    fc = await fake_history_db.read_history(
+        start="2024-08-01", end="2024-08-31", limit=1
+    )
+    assert len(fc["features"]) == 1
