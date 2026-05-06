@@ -15,8 +15,15 @@ router = APIRouter()
 
 @router.get("/viirs")
 @limiter.limit("30/minute")
-async def viirs(request: Request, days: int = Query(1, ge=1, le=10), bbox: Optional[str] = None):
-    """Fetch VIIRS fire detections. NRT API supports 1-10 days only."""
+async def viirs(request: Request, days: int = Query(1, ge=1, le=10), bbox: Optional[str] = None, region: str = Query("mainland")):
+    """Fetch VIIRS fire detections. NRT API supports 1-10 days only.
+
+    In demo mode, returns the bundled snapshot for (VIIRS, region) and
+    ignores `days` / `bbox` (snapshot has fixed coverage)."""
+    from src.utils.demo import is_demo
+    if is_demo():
+        from src.services.snapshot import read_firms
+        return read_firms("VIIRS", region)
     if bbox:
         try:
             parse_bbox(bbox)
@@ -27,8 +34,12 @@ async def viirs(request: Request, days: int = Query(1, ge=1, le=10), bbox: Optio
 
 @router.get("/modis")
 @limiter.limit("30/minute")
-async def modis(request: Request, days: int = Query(1, ge=1, le=10), bbox: Optional[str] = None):
+async def modis(request: Request, days: int = Query(1, ge=1, le=10), bbox: Optional[str] = None, region: str = Query("mainland")):
     """Fetch MODIS fire detections. NRT API supports 1-10 days only."""
+    from src.utils.demo import is_demo
+    if is_demo():
+        from src.services.snapshot import read_firms
+        return read_firms("MODIS", region)
     if bbox:
         try:
             parse_bbox(bbox)
@@ -47,18 +58,10 @@ async def history(
     source: Optional[str] = Query(None, description="VIIRS or MODIS"),
     limit: int = Query(5000, ge=1, le=50000),
 ):
-    """Query historical fire events from the database.
+    """Query historical fire events.
 
-    Returns GeoJSON FeatureCollection. Requires DATABASE_URL to be configured.
-    """
-    from src.db.session import is_configured
-
-    if not is_configured():
-        raise HTTPException(
-            status_code=503,
-            detail="Historical data unavailable — database not configured (set DATABASE_URL)",
-        )
-
+    Demo mode reads `data/snapshot/fires.sqlite`; full mode reads
+    Postgres."""
     if end < start:
         raise HTTPException(status_code=400, detail="end must be >= start")
 
@@ -69,12 +72,30 @@ async def history(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+    from src.utils.demo import is_demo
+    if is_demo():
+        from src.services.snapshot import read_history
+        return await read_history(
+            start=start.isoformat(),
+            end=end.isoformat(),
+            bbox=bbox_coords,
+            source=source,
+            limit=limit,
+        )
+
+    from src.db.session import is_configured
+    if not is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Historical data unavailable — database not configured (set DATABASE_URL)",
+        )
+
     from sqlalchemy import text
     from src.db.session import get_session
 
     # Build query with optional filters
     conditions = ["detected_at::date BETWEEN :start AND :end"]
-    params: dict = {"start": start.isoformat(), "end": end.isoformat(), "limit": limit}
+    params: dict = {"start": start, "end": end, "limit": limit}
 
     if source:
         conditions.append("source = :source")
