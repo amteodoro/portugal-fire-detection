@@ -189,3 +189,23 @@ class TestDemoMode:
             with TestClient(app) as c:
                 r = c.get("/api/health")
                 assert r.json()["demo"] is True
+
+
+def test_static_assets_have_cache_control(app_client):
+    r = app_client.get("/static/index.html")
+    if r.status_code == 200:
+        assert "max-age" in r.headers.get("Cache-Control", "")
+
+
+def test_firms_responses_have_cache_control(app_client, monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "true")
+    import importlib
+    from src.utils import config as cfg
+    importlib.reload(cfg)
+    from src import main as main_mod
+    importlib.reload(main_mod)
+    from fastapi.testclient import TestClient
+    with TestClient(main_mod.app) as c:
+        r = c.get("/api/firms/viirs?days=1")
+        # In demo this returns an empty FC even with no snapshot file present
+        assert "max-age=300" in r.headers.get("Cache-Control", "")

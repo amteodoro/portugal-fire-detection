@@ -69,6 +69,19 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
     )
+
+    @app.middleware("http")
+    async def cache_headers(request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path.startswith("/static/"):
+            response.headers.setdefault("Cache-Control", "public, max-age=86400")
+        elif path.startswith("/api/firms/"):
+            response.headers.setdefault("Cache-Control", "public, max-age=300")
+        elif path.startswith("/api/inference/metrics"):
+            response.headers.setdefault("Cache-Control", "public, max-age=86400")
+        return response
+
     if Path("data/samples").exists():
         app.mount("/static/samples", StaticFiles(directory="data/samples"), name="samples")
     app.mount("/static", StaticFiles(directory="src/static"), name="static")
