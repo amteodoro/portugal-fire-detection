@@ -131,3 +131,39 @@ def test_eumetsat_frp_returns_sample_when_present(demo_app, tmp_path):
         body = r.json()
         assert body["source"] == "EUMETSAT_FRP"
         assert "path" in body
+
+
+def test_aoi_create_blocked_in_demo(demo_app):
+    with TestClient(demo_app) as c:
+        r = c.post("/api/aoi", json={
+            "name": "x", "boundary": {
+                "type": "Polygon",
+                "coordinates": [[[-9, 39], [-8, 39], [-8, 40], [-9, 40], [-9, 39]]],
+            }
+        })
+        assert r.status_code == 403
+        assert "demo" in r.json()["detail"].lower()
+
+
+def test_aoi_subscribe_blocked_in_demo(demo_app):
+    with TestClient(demo_app) as c:
+        r = c.post("/api/aoi/00000000-0000-0000-0000-000000000001/subscribe",
+                   json={"email": "x@y.com"})
+        assert r.status_code == 403
+
+
+def test_aoi_list_returns_snapshot_aois(demo_app, tmp_path):
+    aois_path = Path(tmp_path) / "snapshot/aois.json"
+    aois_path.write_text(json.dumps([
+        {"id": "00000000-0000-0000-0000-000000000001",
+         "name": "Demo AOI", "email": None,
+         "created_at": "2024-08-10T00:00:00Z", "active": True,
+         "boundary": {"type": "Polygon",
+                      "coordinates": [[[-9, 39], [-8, 39], [-8, 40], [-9, 40], [-9, 39]]]}}
+    ]))
+    with TestClient(demo_app) as c:
+        r = c.get("/api/aoi")
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body) == 1
+        assert body[0]["name"] == "Demo AOI"

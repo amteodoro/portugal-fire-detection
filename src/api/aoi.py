@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
 
 from src.utils.limiter import limiter
+from src.utils.demo import is_demo, demo_blocked
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -75,6 +76,7 @@ def _geojson_polygon_to_wkt(geojson: dict) -> str:
 @limiter.limit("20/minute")
 async def create_aoi(request: Request, body: AOICreate):
     """Create a new Area of Interest."""
+    demo_blocked("AOI creation is disabled in demo mode")
     _require_db()
 
     wkt = _geojson_polygon_to_wkt(body.boundary)
@@ -118,6 +120,9 @@ async def create_aoi(request: Request, body: AOICreate):
 @limiter.limit("60/minute")
 async def list_aois(request: Request):
     """List all active Areas of Interest."""
+    if is_demo():
+        from src.services.snapshot import read_aois
+        return read_aois()
     _require_db()
 
     from sqlalchemy import text
@@ -155,6 +160,7 @@ async def list_aois(request: Request):
 @limiter.limit("20/minute")
 async def delete_aoi(request: Request, aoi_id: str):
     """Soft-delete an Area of Interest (sets active=false)."""
+    demo_blocked("AOI deletion is disabled in demo mode")
     _require_db()
 
     try:
@@ -190,6 +196,13 @@ async def aoi_fires(
     days: int = Query(7, ge=1, le=90, description="How many days back to search"),
 ):
     """Get recent fires within an AOI boundary using PostGIS ST_Within."""
+    if is_demo():
+        # In demo we don't slice fires by polygon — return the same VIIRS
+        # snapshot the map already shows so the AOI panel stays
+        # consistent.
+        from src.services.snapshot import read_firms
+        fc = read_firms("VIIRS", "mainland")
+        return {**fc, "count": len(fc.get("features", []))}
     _require_db()
 
     try:
@@ -251,6 +264,7 @@ async def aoi_fires(
 @limiter.limit("20/minute")
 async def subscribe_aoi(request: Request, aoi_id: str, body: dict):
     """Add or update an email subscription for AOI fire alerts."""
+    demo_blocked("AOI email subscriptions are disabled in demo mode")
     _require_db()
 
     try:
@@ -288,6 +302,7 @@ async def subscribe_aoi(request: Request, aoi_id: str, body: dict):
 @limiter.limit("20/minute")
 async def unsubscribe_aoi(request: Request, aoi_id: str):
     """Remove email subscription from an AOI."""
+    demo_blocked("AOI email subscriptions are disabled in demo mode")
     _require_db()
 
     try:
