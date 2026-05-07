@@ -89,3 +89,28 @@ jobs:
       - name: Stop container
         if: always()
         run: docker stop fire-smoke || true
+
+  deploy-hf-space:
+    name: Mirror main to Hugging Face Spaces
+    needs: [test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 0
+
+      - name: Push to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN secret not set — skipping HF mirror."
+            exit 0
+          fi
+          git config user.email "ci@github.actions"
+          git config user.name "GitHub Actions"
+          git remote add hf "https://amteodoro:${HF_TOKEN}@huggingface.co/spaces/amteodoro/portugal-fires"
+          git push hf main --force
