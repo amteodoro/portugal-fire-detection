@@ -30,20 +30,78 @@ REGIONS = {
 }
 
 
+FIRMS_AREA_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
+
+# Source variants. NRT covers the last ~2 months only. SP (Standard
+# Processing) goes back years but lags ~2 months. We pick automatically
+# based on how recent the requested window is.
+_FIRMS_SOURCES = {
+    "VIIRS": {"nrt": "VIIRS_SNPP_NRT", "sp": "VIIRS_SNPP_SP"},
+    "MODIS": {"nrt": "MODIS_NRT",      "sp": "MODIS_SP"},
+}
+
+
+def _firms_source(product: str, end: date) -> str:
+    """Pick NRT vs SP based on how old the snapshot's end date is."""
+    age_days = (date.today() - end).days
+    return _FIRMS_SOURCES[product]["nrt" if age_days <= 60 else "sp"]
+
+
+async def _firms_window(
+    client, api_key: str, source: str, bbox: str, window_end: date, days: int
+) -> list[dict]:
+    """Fetch one ≤10-day FIRMS window and return parsed GeoJSON features."""
+    from src.services.firms_service import _parse_csv  # reuse the CSV parser
+
+    # Endpoint: /area/csv/<key>/<source>/<bbox>/<days>/<date>
+    # The date is the END of the window (inclusive). days∈[1,10].
+    url = f"{FIRMS_AREA_BASE}/{api_key}/{source}/{bbox}/{days}/{window_end.isoformat()}"
+    log.info("FIRMS GET %s/%d/%s", source, days, window_end)
+    r = await client.get(url, timeout=30.0)
+    r.raise_for_status()
+    product_key = "VIIRS" if source.startswith("VIIRS") else "MODIS"
+    return _parse_csv(product_key, r.content)
+
+
 async def fetch_firms(out: Path, start: date, end: date) -> dict:
     """Fetch FIRMS data for the snapshot window per (product, region).
 
-    Uses the live FIRMS API (requires FIRMS_API_KEY in environment)."""
-    from src.services.firms_service import fetch_bbox
-    days = (end - start).days + 1
+    Walks the date range in ≤10-day windows (FIRMS' per-request cap) and
+    auto-selects NRT vs SP based on how old the window is. Requires
+    FIRMS_API_KEY in the environment."""
+    import httpx
+    from src.utils.config import settings
+    api_key = settings.FIRMS_API_KEY
+    if not api_key:
+        log.warning("FIRMS_API_KEY not set — writing empty FeatureCollections")
+
     out.mkdir(parents=True, exist_ok=True)
     counts: dict[str, int] = {}
-    for product in ("VIIRS", "MODIS"):
-        for region, bbox in REGIONS.items():
-            log.info("FIRMS %s/%s", product, region)
-            fc = await fetch_bbox(product, days=min(days, 10), bbox_override=bbox)
-            (out / f"{product.lower()}_{region}.geojson").write_text(json.dumps(fc))
-            counts[f"{product}_{region}"] = len(fc.get("features", []))
+
+    async with httpx.AsyncClient() as client:
+        for product in ("VIIRS", "MODIS"):
+            source = _firms_source(product, end)
+            for region, bbox in REGIONS.items():
+                features: list[dict] = []
+                if api_key:
+                    cursor = end
+                    while cursor >= start:
+                        window_days = min(10, (cursor - start).days + 1)
+                        try:
+                            chunk = await _firms_window(
+                                client, api_key, source, bbox, cursor, window_days
+                            )
+                            features.extend(chunk)
+                        except httpx.HTTPStatusError as exc:
+                            log.warning(
+                                "FIRMS window failed for %s/%s ending %s: %s",
+                                source, region, cursor, exc,
+                            )
+                        cursor = date.fromordinal(cursor.toordinal() - window_days)
+                fc = {"type": "FeatureCollection", "features": features}
+                (out / f"{product.lower()}_{region}.geojson").write_text(json.dumps(fc))
+                counts[f"{product}_{region}"] = len(features)
+                log.info("  → %s/%s: %d features", source, region, len(features))
     return counts
 
 
