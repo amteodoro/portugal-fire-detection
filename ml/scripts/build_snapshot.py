@@ -253,7 +253,7 @@ def _extract_fire_pixels_sync(
     return features
 
 
-async def fetch_sentinel3(out: Path, start: date, end: date, max_scenes: int = 50) -> dict:
+async def fetch_sentinel3(out: Path, start: date, end: date, max_scenes: int = 50, skip_s3: bool = False) -> dict:
     """Fetch Sentinel-3 SLSTR L2 FRP scenes + per-pixel fire detections
     for [start, end] over Portugal.
 
@@ -301,8 +301,13 @@ async def fetch_sentinel3(out: Path, start: date, end: date, max_scenes: int = 5
         log.warning("Sentinel-3 OData search failed: %s", exc)
 
     # ── 2. Optional S3 client for fire-pixel extraction ───────────────
+    # NetCDF4/HDF5 is not thread-safe; force sequential reads and disable
+    # file locking to avoid SIGSEGV when many workers race on the same lib.
+    import os
+    os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
+
     s3_client = None
-    if settings.COPERNICUS_S3_ACCESS_KEY and settings.COPERNICUS_S3_SECRET_KEY:
+    if not skip_s3 and settings.COPERNICUS_S3_ACCESS_KEY and settings.COPERNICUS_S3_SECRET_KEY:
         import boto3
         s3_client = boto3.client(
             "s3",
@@ -318,8 +323,8 @@ async def fetch_sentinel3(out: Path, start: date, end: date, max_scenes: int = 5
     scenes: list[dict[str, Any]] = []
     fire_features: list[dict[str, Any]] = []
 
-    # ── 3. Per-scene processing (bounded concurrency) ─────────────────
-    sem = asyncio.Semaphore(4)
+    # ── 3. Per-scene processing (sequential — HDF5 isn't thread-safe) ─
+    sem = asyncio.Semaphore(1)
 
     async def process(prod: dict) -> tuple[dict, list[dict]]:
         name = prod.get("Name", "")
@@ -651,6 +656,25 @@ def _glob_samples_subset(
     return len(info)
 
 
+def _ensure_min_samples(script: list[str], info_path: Path, target: int) -> None:
+    """Run a visualize_*.py script if the cached samples_info.json has
+    fewer than `target` entries. Best-effort — if the script fails (e.g.
+    no training tiles), we silently use whatever is already on disk."""
+    try:
+        existing = 0
+        if info_path.exists():
+            data = json.loads(info_path.read_text(encoding="utf-8"))
+            existing = len(data) if isinstance(data, list) else 0
+        if existing >= target:
+            return
+        log.info("Regenerating samples via %s (have %d, want %d)",
+                 " ".join(script), existing, target)
+        import subprocess
+        subprocess.run(script, check=False, timeout=300)
+    except Exception as exc:
+        log.warning("sample regeneration failed: %s", exc)
+
+
 def bundle_dataset_previews(snapshot_root: Path, n: int = 50) -> dict:
     """Copy up to `n` pre-rendered visualisations from data/samples/* into
     data/snapshot/dataset/* so the demo dataset page has navigable
@@ -662,6 +686,21 @@ def bundle_dataset_previews(snapshot_root: Path, n: int = 50) -> dict:
     dst_root = snapshot_root / "dataset"
     dst_root.mkdir(parents=True, exist_ok=True)
     counts: dict[str, Any] = {}
+
+    # Top up sample directories to `n` entries by re-running the
+    # existing visualize scripts if needed.
+    _ensure_min_samples(
+        ["python", "ml/scripts/visualize_tiles.py", "--n-samples", str(n)],
+        src_root / "tiles" / "samples_info.json", n,
+    )
+    _ensure_min_samples(
+        ["python", "ml/scripts/visualize_dual_satellite.py", "--n-samples", str(n)],
+        src_root / "dual_satellite" / "samples_info.json", n,
+    )
+    _ensure_min_samples(
+        ["python", "ml/scripts/visualize_colocated.py", "--n-samples", str(n)],
+        src_root / "colocated_viz" / "samples_info.json", n,
+    )
 
     # Tile samples (info JSON present)
     counts["tile_samples"] = _copy_samples_subset(
@@ -799,6 +838,9 @@ async def main():
     p.add_argument("--start", type=date.fromisoformat, default=date(2024, 8, 12))
     p.add_argument("--end",   type=date.fromisoformat, default=date(2024, 8, 19))
     p.add_argument("--out",   type=Path, default=Path("data/snapshot"))
+    p.add_argument("--skip-s3-extraction", action="store_true",
+                   help="Skip Sentinel-3 fire-pixel extraction; use centroid proxies. "
+                        "Useful when netCDF4/HDF5 segfaults on this machine.")
     args = p.parse_args()
 
     if args.out.exists():
@@ -806,24 +848,39 @@ async def main():
     args.out.mkdir(parents=True)
 
     counts: dict[str, Any] = {}
-    counts.update(await fetch_firms(args.out / "firms", args.start, args.end))
-    counts.update(await fetch_sentinel2(args.out / "sentinel2", args.start, args.end))
-    counts.update(await fetch_sentinel3(args.out / "sentinel3", args.start, args.end))
-    counts.update(await fetch_eumetsat(args.out, args.start, args.end))
-    counts.update(build_tiles(args.out / "tiles"))
-    counts.update(await build_history_sqlite(args.out))
-    counts.update(write_aois(args.out / "aois.json"))
-    counts.update(copy_metrics(args.out))
-    counts.update(bundle_dataset_previews(args.out, n=50))
 
-    manifest = {
-        "frozen_at": datetime.now(timezone.utc).isoformat(),
-        "snapshot_range": {"start": args.start.isoformat(), "end": args.end.isoformat()},
-        "regions": list(REGIONS.keys()),
-        "counts": counts,
-    }
-    (args.out / "manifest.json").write_text(json.dumps(manifest, indent=2))
-    log.info("snapshot built: %s", manifest)
+    def write_manifest():
+        manifest = {
+            "frozen_at": datetime.now(timezone.utc).isoformat(),
+            "snapshot_range": {"start": args.start.isoformat(), "end": args.end.isoformat()},
+            "regions": list(REGIONS.keys()),
+            "counts": counts,
+        }
+        (args.out / "manifest.json").write_text(json.dumps(manifest, indent=2))
+
+    # Run safe steps first so a Sentinel-3 segfault never costs us the
+    # rest of the snapshot. The manifest is rewritten after each step
+    # so even a process-level crash leaves a coherent snapshot behind.
+    counts.update(await fetch_firms(args.out / "firms", args.start, args.end));     write_manifest()
+    counts.update(await fetch_sentinel2(args.out / "sentinel2", args.start, args.end)); write_manifest()
+    counts.update(await fetch_eumetsat(args.out, args.start, args.end));            write_manifest()
+    counts.update(build_tiles(args.out / "tiles"));                                  write_manifest()
+    counts.update(await build_history_sqlite(args.out));                             write_manifest()
+    counts.update(write_aois(args.out / "aois.json"));                               write_manifest()
+    counts.update(copy_metrics(args.out));                                           write_manifest()
+
+    # Sentinel-3 — known to segfault under HDF5 thread races on some
+    # systems. Already protected by skip_s3 flag; even a hard crash here
+    # leaves an otherwise-complete snapshot on disk via earlier writes.
+    counts.update(await fetch_sentinel3(
+        args.out / "sentinel3", args.start, args.end, skip_s3=args.skip_s3_extraction
+    ))
+    write_manifest()
+
+    # Dataset previews + summary.json LAST so the summary reflects
+    # final Sentinel-3 counts.
+    counts.update(bundle_dataset_previews(args.out, n=50));                          write_manifest()
+    log.info("snapshot built: %s", counts)
 
 
 if __name__ == "__main__":
