@@ -165,82 +165,150 @@ async def fetch_sentinel2(out: Path, start: date, end: date) -> dict:
     return {"sentinel2_items": len(items)}
 
 
-def fetch_sentinel3(out: Path) -> dict:
-    """Inline the file-scanning logic from src/api/sentinel3.py to write
-    snapshot/sentinel3/{scenes.geojson,fire_pixels.geojson}."""
-    import re
+async def fetch_sentinel3(out: Path, start: date, end: date) -> dict:
+    """Search the Copernicus Data Space OData catalog (anonymous) for
+    Sentinel-3 SLSTR Level-2 Fire Radiative Power scenes over Portugal
+    in [start, end]. Persists scene metadata + footprint centroids.
+
+    The actual per-pixel FRP grid lives inside each .SEN3 product and
+    requires authentication to download — that's beyond a free-tier
+    demo. The centroid points let the demo UI show where Sentinel-3
+    passed over Portugal during the snapshot window."""
+    import httpx
+    from src.utils.config import settings
+    from src.utils.geo import parse_bbox
+
+    lon_min, lat_min, lon_max, lat_max = parse_bbox(settings.PORTUGAL_BBOX)
     out.mkdir(parents=True, exist_ok=True)
 
-    S3_ZIP_DIR = Path("data/ml/sentinel3")
-    LABELS_DIR = Path("ml/data/labels")
-    FILENAME_RE = re.compile(r"^(S3[AB])_([A-Z0-9_]+?)_{4}(\d{8}T\d{6})_")
+    polygon_wkt = (
+        f"POLYGON(({lon_min} {lat_min},{lon_max} {lat_min},"
+        f"{lon_max} {lat_max},{lon_min} {lat_max},{lon_min} {lat_min}))"
+    )
+    odata_filter = (
+        "Collection/Name eq 'SENTINEL-3' "
+        f"and OData.CSC.Intersects(area=geography'SRID=4326;{polygon_wkt}') "
+        f"and ContentDate/Start ge {start.isoformat()}T00:00:00Z "
+        f"and ContentDate/Start le {end.isoformat()}T23:59:59Z "
+        "and contains(Name, 'SL_2_FRP')"
+    )
+    odata_url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
+    params = {"$filter": odata_filter, "$top": 200, "$orderby": "ContentDate/Start desc"}
 
-    # Scenes
-    scenes = []
-    if S3_ZIP_DIR.exists():
-        for p in S3_ZIP_DIR.glob("*.zip"):
-            m = FILENAME_RE.match(p.name)
-            if not m:
-                continue
-            sat, instr, raw = m.group(1), m.group(2), m.group(3)
-            scenes.append({
-                "scene_id": p.stem,
-                "satellite": sat,
-                "instrument": instr,
-                "date": f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}",
-                "size_mb": round(p.stat().st_size / (1024 * 1024), 1),
-            })
-    scenes.sort(key=lambda s: s["date"], reverse=True)
-    (out / "scenes.geojson").write_text(json.dumps(scenes))
+    scenes: list[dict[str, Any]] = []
+    fire_features: list[dict[str, Any]] = []
 
-    # Fire pixels
-    features = []
-    if LABELS_DIR.exists():
-        for p in LABELS_DIR.glob("*.json"):
-            try:
-                data = json.loads(p.read_text())
-            except Exception:
-                continue
-            if data.get("satellite") != "sentinel3" or data.get("label") != 1:
-                continue
-            lat = data.get("tile_center_lat")
-            lon = data.get("tile_center_lon")
-            if lat is None or lon is None:
-                continue
-            scene_id = data.get("scene_id") or ""
-            sat, instr, dt_str = None, None, None
-            m = FILENAME_RE.match(scene_id)
-            if m:
-                sat, instr, raw = m.group(1), m.group(2), m.group(3)
-                dt_str = f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
-            features.append({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                "properties": {
-                    "tile_id": data.get("tile_id"),
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            r = await c.get(odata_url, params=params)
+            r.raise_for_status()
+            data = r.json()
+            for prod in data.get("value", []):
+                name = prod.get("Name", "")
+                content_date = prod.get("ContentDate", {})
+                dt = (content_date.get("Start") or "")[:10]
+                # Name format: S3{A,B}_SL_2_FRP____<datetime>_..._<flags>.SEN3
+                sat = name[:3]  # S3A or S3B
+                geom = prod.get("GeoFootprint") or {}
+                scene_id = name.replace(".SEN3", "")
+
+                scenes.append({
                     "scene_id": scene_id,
                     "satellite": sat,
-                    "instrument": instr,
-                    "date": dt_str,
-                    "tile_center_lat": lat,
-                    "tile_center_lon": lon,
-                    "label": data.get("label"),
-                },
-            })
-    (out / "fire_pixels.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": features}))
-    return {"sentinel3_scenes": len(scenes), "sentinel3_fires": len(features)}
+                    "instrument": "SLSTR_FRP",
+                    "date": dt,
+                    "size_mb": round((prod.get("ContentLength") or 0) / (1024 * 1024), 1),
+                    "geometry": geom,
+                })
+
+                # Centroid of the scene footprint as a single fire-pixel proxy
+                if geom.get("type") in ("Polygon", "MultiPolygon") and geom.get("coordinates"):
+                    if geom["type"] == "MultiPolygon":
+                        ring = geom["coordinates"][0][0]
+                    else:
+                        ring = geom["coordinates"][0]
+                    if ring:
+                        lons = [pt[0] for pt in ring]
+                        lats = [pt[1] for pt in ring]
+                        cx = sum(lons) / len(lons)
+                        cy = sum(lats) / len(lats)
+                        # Only emit a centroid when it actually falls inside
+                        # the requested bbox — a S3 swath is huge and most
+                        # centroids will be far from Portugal.
+                        if lon_min <= cx <= lon_max and lat_min <= cy <= lat_max:
+                            fire_features.append({
+                                "type": "Feature",
+                                "geometry": {"type": "Point", "coordinates": [cx, cy]},
+                                "properties": {
+                                    "scene_id": scene_id,
+                                    "satellite": sat,
+                                    "instrument": "SLSTR_FRP",
+                                    "date": dt,
+                                    "tile_center_lat": cy,
+                                    "tile_center_lon": cx,
+                                    "label": 1,
+                                    "note": "scene-centroid proxy (full FRP grid requires Copernicus auth)",
+                                },
+                            })
+    except Exception as exc:
+        log.warning("Sentinel-3 OData search failed: %s", exc)
+
+    (out / "scenes.geojson").write_text(json.dumps(scenes))
+    (out / "fire_pixels.geojson").write_text(json.dumps({
+        "type": "FeatureCollection", "features": fire_features
+    }))
+    log.info("Sentinel-3: %d scenes, %d centroid pixels over %s..%s",
+             len(scenes), len(fire_features), start, end)
+    return {"sentinel3_scenes": len(scenes), "sentinel3_fires": len(fire_features)}
 
 
-async def fetch_eumetsat(out: Path) -> dict:
-    """Capture one EUMETSAT FRP PNG."""
-    from src.services.eumetsat_service import fetch_frp_png
-    meta = await fetch_frp_png()
-    if "path" in meta:
-        src = Path(meta["path"])
-        if src.exists():
-            shutil.copy(src, out / "eumetsat_frp_sample.png")
-            return {"eumetsat_frp": src.name}
-    return {"eumetsat_frp": None}
+async def fetch_eumetsat(out: Path, start: date, end: date) -> dict:
+    """Fetch a historical Meteosat FRP PNG via the EUMETSAT view WMS
+    using its time= parameter. Picks 12:00 UTC at the midpoint of the
+    snapshot window.
+
+    The default layer name (`msg_fes:fire`) is the public Meteosat
+    Second Generation Fire Detection product on view.eumetsat.int — no
+    token required."""
+    import httpx
+    from datetime import datetime, time, timezone, timedelta
+    from src.utils.config import settings
+    from src.utils.geo import parse_bbox
+
+    wms_url   = settings.EUMETSAT_WMS_URL or "https://view.eumetsat.int/geoserver/wms"
+    wms_layer = settings.EUMETSAT_FRP_LAYER or "msg_fes:fire"
+
+    midpoint = start + timedelta(days=(end - start).days // 2)
+    timestamp = datetime.combine(midpoint, time(12, 0), tzinfo=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%S.000Z"
+    )
+    lon_min, lat_min, lon_max, lat_max = parse_bbox(settings.PORTUGAL_BBOX)
+
+    params = {
+        "service": "WMS", "request": "GetMap", "version": "1.1.1",
+        "layers": wms_layer, "styles": "",
+        "format": "image/png", "transparent": "true",
+        "srs": "EPSG:4326",
+        "bbox": f"{lon_min},{lat_min},{lon_max},{lat_max}",
+        "width": 1024, "height": 1024,
+        "time": timestamp,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            r = await c.get(wms_url, params=params)
+            r.raise_for_status()
+            content = r.content
+        if len(content) < 1000:
+            log.warning("EUMETSAT WMS returned a tiny body (%d bytes) — likely an error response", len(content))
+            return {"eumetsat_frp": None}
+        target = out / "eumetsat_frp_sample.png"
+        target.write_bytes(content)
+        log.info("EUMETSAT FRP: %d bytes for %s (layer=%s)", len(content), timestamp, wms_layer)
+        return {"eumetsat_frp": target.name, "eumetsat_frp_time": timestamp}
+    except Exception as exc:
+        log.warning("EUMETSAT WMS fetch failed: %s", exc)
+        return {"eumetsat_frp": None}
 
 
 def build_tiles(out: Path) -> dict:
@@ -405,8 +473,8 @@ async def main():
     counts: dict[str, Any] = {}
     counts.update(await fetch_firms(args.out / "firms", args.start, args.end))
     counts.update(await fetch_sentinel2(args.out / "sentinel2", args.start, args.end))
-    counts.update(fetch_sentinel3(args.out / "sentinel3"))
-    counts.update(await fetch_eumetsat(args.out))
+    counts.update(await fetch_sentinel3(args.out / "sentinel3", args.start, args.end))
+    counts.update(await fetch_eumetsat(args.out, args.start, args.end))
     counts.update(build_tiles(args.out / "tiles"))
     counts.update(await build_history_sqlite(args.out))
     counts.update(write_aois(args.out / "aois.json"))
