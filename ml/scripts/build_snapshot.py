@@ -600,6 +600,200 @@ def copy_metrics(out: Path) -> dict:
     return counts
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Pre-bundled dataset previews (Task D)
+# ──────────────────────────────────────────────────────────────────────
+
+def _copy_samples_subset(
+    src_info: Path, src_dir: Path, dst_dir: Path, n: int
+) -> int:
+    """Copy up to `n` entries from src_info JSON + their referenced files
+    in src_dir into dst_dir, writing a fresh samples_info.json. Returns
+    how many were actually copied."""
+    if not src_info.exists():
+        return 0
+    try:
+        items = json.loads(src_info.read_text(encoding="utf-8"))
+    except Exception:
+        return 0
+    if not isinstance(items, list) or not items:
+        return 0
+    items = items[:n]
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for it in items:
+        fn = it.get("filename")
+        if not fn:
+            continue
+        src_file = src_dir / fn
+        if src_file.exists():
+            shutil.copy(src_file, dst_dir / fn)
+    (dst_dir / "samples_info.json").write_text(json.dumps(items, indent=2))
+    return len(items)
+
+
+def _glob_samples_subset(
+    src_dir: Path, pattern: str, dst_dir: Path, n: int, sample_type: str
+) -> int:
+    """Build samples_info from glob results when no info JSON exists.
+    Used for dirs like data/samples/dual_satellite/ that just have
+    `<prefix>_*.png` files with no sidecar metadata."""
+    if not src_dir.exists():
+        return 0
+    files = sorted(src_dir.glob(pattern))[:n]
+    if not files:
+        return 0
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    info: list[dict[str, Any]] = []
+    for f in files:
+        shutil.copy(f, dst_dir / f.name)
+        info.append({"filename": f.name, "type": sample_type})
+    (dst_dir / "samples_info.json").write_text(json.dumps(info, indent=2))
+    return len(info)
+
+
+def bundle_dataset_previews(snapshot_root: Path, n: int = 50) -> dict:
+    """Copy up to `n` pre-rendered visualisations from data/samples/* into
+    data/snapshot/dataset/* so the demo dataset page has navigable
+    samples without needing to regenerate them at runtime.
+
+    Also writes a `summary.json` that the demo dataset router serves
+    instead of recomputing dataset stats at request time."""
+    src_root = Path("data/samples")
+    dst_root = snapshot_root / "dataset"
+    dst_root.mkdir(parents=True, exist_ok=True)
+    counts: dict[str, Any] = {}
+
+    # Tile samples (info JSON present)
+    counts["tile_samples"] = _copy_samples_subset(
+        src_root / "tiles" / "samples_info.json",
+        src_root / "tiles",
+        dst_root / "tile_samples",
+        n,
+    )
+
+    # Dual-satellite — typically just `dual_fire_*.png` glob, no info JSON
+    dual_info = src_root / "dual_satellite" / "samples_info.json"
+    if dual_info.exists():
+        counts["dual_view"] = _copy_samples_subset(
+            dual_info, src_root / "dual_satellite",
+            dst_root / "dual_view", n,
+        )
+    else:
+        counts["dual_view"] = _glob_samples_subset(
+            src_root / "dual_satellite", "dual_fire_*.png",
+            dst_root / "dual_view", n, "dual_satellite",
+        )
+
+    # Co-located visualisations (info JSON present)
+    counts["colocated"] = _copy_samples_subset(
+        src_root / "colocated_viz" / "samples_info.json",
+        src_root / "colocated_viz",
+        dst_root / "colocated", n,
+    )
+
+    # ── Build a dataset summary that mirrors `/api/dataset/summary` shape ──
+    s2_manifest = _read_json(snapshot_root / "sentinel2" / "manifest.json") or {}
+    s2_items = s2_manifest.get("items", [])
+    s2_dates = sorted({(it.get("datetime") or "")[:10] for it in s2_items if it.get("datetime")})
+    s3_scenes = _read_json(snapshot_root / "sentinel3" / "scenes.geojson") or []
+    s3_count = len(s3_scenes) if isinstance(s3_scenes, list) else 0
+
+    # FIRMS region totals
+    regions: list[dict[str, Any]] = []
+    total_fires = 0
+    for region in REGIONS:
+        r_total = 0
+        for product in ("viirs", "modis"):
+            f = snapshot_root / "firms" / f"{product}_{region}.geojson"
+            if f.exists():
+                try:
+                    fc = json.loads(f.read_text())
+                    r_total += len(fc.get("features", []))
+                except Exception:
+                    pass
+        regions.append({"name": region, "total_fires": r_total})
+        total_fires += r_total
+
+    # Splits (use real splits info if available)
+    splits_info = _read_json(Path("ml/data/processed/splits/splits_info.json"))
+    if splits_info and "splits" in splits_info:
+        splits_raw = splits_info["splits"]
+        splits = {}
+        total_tiles = 0
+        fire_tiles = 0
+        no_fire_tiles = 0
+        for k in ("train", "val", "test"):
+            f = splits_raw.get(k, {}).get("fire", 0)
+            nf = splits_raw.get(k, {}).get("no_fire", 0)
+            tot = f + nf
+            splits[k] = {
+                "fire": f, "no_fire": nf, "total": tot,
+                "fire_ratio": (f / tot) if tot else 0,
+            }
+            total_tiles += tot
+            fire_tiles += f
+            no_fire_tiles += nf
+    else:
+        splits = {k: {"fire": 0, "no_fire": 0, "total": 0, "fire_ratio": 0}
+                  for k in ("train", "val", "test")}
+        total_tiles = fire_tiles = no_fire_tiles = 0
+
+    # False-color scene samples — re-use Sentinel-2 thumbnails
+    samples = []
+    for it in s2_items[:n]:
+        thumb = it.get("thumb")
+        if not thumb:
+            continue
+        samples.append({
+            "scene_id": it.get("id"),
+            "date": (it.get("datetime") or "")[:10],
+            "image_url": thumb,
+        })
+
+    summary = {
+        "sentinel2": {
+            "total_scenes": len(s2_items),
+            "unique_dates": len(s2_dates),
+            "date_range": {
+                "start": s2_dates[0] if s2_dates else None,
+                "end": s2_dates[-1] if s2_dates else None,
+            },
+        },
+        "sentinel3": {
+            "total_scenes": s3_count,
+            "slstr_scenes": s3_count,
+            "olci_scenes": 0,
+        },
+        "firms": {
+            "total_fire_detections": total_fires,
+            "regions": regions,
+        },
+        "processed": {
+            "total_tiles": total_tiles,
+            "fire_tiles": fire_tiles,
+            "no_fire_tiles": no_fire_tiles,
+            "fire_ratio": (fire_tiles / total_tiles) if total_tiles else 0,
+            "splits": splits,
+        },
+        "status": {"ready_for_training": total_tiles > 0},
+        "samples": samples,
+        "demo": True,
+    }
+    (dst_root / "summary.json").write_text(json.dumps(summary, indent=2))
+    counts["dataset_summary"] = True
+    log.info("dataset previews bundled: %s", counts)
+    return {"dataset_" + k: v for k, v in counts.items()}
+
+
+def _read_json(path: Path) -> Any:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
 async def main():
     p = argparse.ArgumentParser()
     p.add_argument("--start", type=date.fromisoformat, default=date(2024, 8, 12))
@@ -620,6 +814,7 @@ async def main():
     counts.update(await build_history_sqlite(args.out))
     counts.update(write_aois(args.out / "aois.json"))
     counts.update(copy_metrics(args.out))
+    counts.update(bundle_dataset_previews(args.out, n=50))
 
     manifest = {
         "frozen_at": datetime.now(timezone.utc).isoformat(),

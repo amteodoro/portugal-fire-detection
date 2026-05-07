@@ -7,36 +7,18 @@ function debounce(fn, wait) {
   };
 }
 
-// Demo mode initialization — fetches /api/health and configures UI
-async function initDemoMode() {
-  try {
-    const r = await fetch('/api/health');
-    const h = await r.json();
-    window.__DEMO__ = !!h.demo;
-    if (h.demo) {
-      const banner = document.getElementById('demoBanner');
-      const range = h.snapshot_range || {};
-      const text = (range.start && range.end)
-        ? `Demo mode — frozen snapshot of Portugal fires, ${range.start} to ${range.end}.`
-        : 'Demo mode — read-only snapshot.';
-      banner.textContent = text;
-      banner.style.display = 'block';
-      // Hide nav links to admin pages
-      document.querySelectorAll('.navbar-nav .nav-link').forEach(a => {
-        if (a.getAttribute('href') === '/static/dataset.html') {
-          a.parentElement.style.display = 'none';
-        }
-      });
-      // Disable AOI write actions
-      const drawBtn = document.getElementById('aoiDrawBtn');
-      if (drawBtn) {
-        drawBtn.classList.add('demo-disabled');
-        drawBtn.title = 'Disabled in demo mode';
-      }
-    }
-  } catch (e) {
-    // Health unreachable — assume not demo, proceed normally
-    window.__DEMO__ = false;
+// Demo mode initialization — reads server-rendered window.__DEMO_STATE__
+// (set by demo-init.js, which runs on every page load before app.js).
+// The banner and demo-disabled controls are already wired by demo-init.js;
+// this function only handles app.js-specific state.
+function initDemoMode() {
+  if (!window.__DEMO__) return;
+  // Disable AOI write actions (the draw button is rendered by Leaflet,
+  // so it isn't reachable via [data-demo-disabled] in HTML).
+  const drawBtn = document.getElementById('aoiDrawBtn');
+  if (drawBtn) {
+    drawBtn.classList.add('demo-disabled');
+    drawBtn.title = 'Disabled in demo mode';
   }
 }
 
@@ -1205,7 +1187,7 @@ map.on(L.Draw ? L.Draw.Event.CREATED : 'draw:created', async (e) => {
 
 // Start the application
 (async () => {
-  await initDemoMode();
+  initDemoMode();
   initializeApp();
   loadAOIList();
 })();
