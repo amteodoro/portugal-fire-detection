@@ -86,7 +86,11 @@ async def fetch_firms(out: Path, start: date, end: date) -> dict:
                 if api_key:
                     cursor = end
                     while cursor >= start:
-                        window_days = min(10, (cursor - start).days + 1)
+                        # FIRMS dated archive endpoint caps days at 5
+                        # (the FIRMS docs say 10, but that's only the
+                        # un-dated NRT endpoint; with an explicit date
+                        # the API rejects anything >5).
+                        window_days = min(5, (cursor - start).days + 1)
                         try:
                             chunk = await _firms_window(
                                 client, api_key, source, bbox, cursor, window_days
@@ -106,26 +110,46 @@ async def fetch_firms(out: Path, start: date, end: date) -> dict:
 
 
 async def fetch_sentinel2(out: Path, start: date, end: date) -> dict:
-    """Search S2, copy thumbnails locally, write a manifest with rewritten URLs."""
-    from src.services.sentinel_service import search_items
-    days = (end - start).days + 1
-    data = await search_items(days=days, cloud_pct=20, limit=10)
+    """Search S2 over the explicit [start, end] window, copy up to 10
+    low-cloud thumbnails locally, and write a manifest with rewritten URLs.
+
+    Bypasses src.services.sentinel_service because that helper computes
+    "days back from now", which won't return historical scenes."""
+    import httpx
+    from datetime import datetime, time, timezone
+    from src.utils.config import settings
+    from src.utils.geo import parse_bbox
+
+    bbox = parse_bbox(settings.PORTUGAL_BBOX)
+    start_iso = datetime.combine(start, time.min, tzinfo=timezone.utc).isoformat()
+    end_iso   = datetime.combine(end,   time.max, tzinfo=timezone.utc).isoformat()
+    body = {
+        "collections": ["sentinel-2-l2a"],
+        "bbox": list(bbox),
+        "datetime": f"{start_iso}/{end_iso}",
+        "limit": 10,
+        "query": {"eo:cloud_cover": {"lt": 20}},
+        "sortby": [{"field": "properties.datetime", "direction": "desc"}],
+    }
+
     out.mkdir(parents=True, exist_ok=True)
     thumb_dir = out / "thumbnails"
     thumb_dir.mkdir(exist_ok=True)
     items: list[dict[str, Any]] = []
-    import httpx
     async with httpx.AsyncClient(timeout=30) as c:
-        for f in data.get("features", []):
+        r = await c.post(f"{settings.STAC_CATALOG_URL}/search", json=body)
+        r.raise_for_status()
+        features = r.json().get("features", [])
+        for f in features:
             assets = f.get("assets", {})
             href = (assets.get("thumbnail") or {}).get("href") or (assets.get("preview") or {}).get("href")
             if not href:
                 continue
             local = thumb_dir / f"{f['id']}.jpg"
             try:
-                r = await c.get(href)
-                r.raise_for_status()
-                local.write_bytes(r.content)
+                rr = await c.get(href)
+                rr.raise_for_status()
+                local.write_bytes(rr.content)
             except Exception as exc:
                 log.warning("thumb fetch failed for %s: %s", f["id"], exc)
                 continue
@@ -137,6 +161,7 @@ async def fetch_sentinel2(out: Path, start: date, end: date) -> dict:
                 "thumb": f"/static/snapshot/sentinel2/thumbnails/{local.name}",
             })
     (out / "manifest.json").write_text(json.dumps({"items": items}))
+    log.info("Sentinel-2: %d thumbnails over %s..%s", len(items), start, end)
     return {"sentinel2_items": len(items)}
 
 
@@ -283,7 +308,7 @@ def build_tiles(out: Path) -> dict:
     return {"tiles": len(tiles)}
 
 
-def build_history_sqlite(out: Path) -> dict:
+async def build_history_sqlite(out: Path) -> dict:
     """Dump fire_events from local Postgres into snapshot/fires.sqlite.
 
     Requires DATABASE_URL set and the table populated. Falls back to
@@ -305,28 +330,24 @@ def build_history_sqlite(out: Path) -> dict:
     try:
         import asyncpg
         from src.utils.config import settings
-
-        async def pull():
-            nonlocal inserted
-            url = settings.DATABASE_URL.replace("+asyncpg", "")
-            pool = await asyncpg.connect(url)
-            try:
-                rows = await pool.fetch(
-                    "SELECT source, detected_at, ST_Y(location::geometry) AS lat,"
-                    " ST_X(location::geometry) AS lon, frp, confidence, region"
-                    " FROM fire_events"
+        url = settings.DATABASE_URL.replace("+asyncpg", "")
+        pool = await asyncpg.connect(url)
+        try:
+            rows = await pool.fetch(
+                "SELECT source, detected_at, ST_Y(location::geometry) AS lat,"
+                " ST_X(location::geometry) AS lon, frp, confidence, region"
+                " FROM fire_events"
+            )
+            for r in rows:
+                conn.execute(
+                    "INSERT INTO fire_events (source, detected_at, lat, lon, frp, confidence, region)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (r["source"], r["detected_at"].isoformat(),
+                     r["lat"], r["lon"], r["frp"], r["confidence"], r["region"]),
                 )
-                for r in rows:
-                    conn.execute(
-                        "INSERT INTO fire_events (source, detected_at, lat, lon, frp, confidence, region)"
-                        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (r["source"], r["detected_at"].isoformat(),
-                         r["lat"], r["lon"], r["frp"], r["confidence"], r["region"]),
-                    )
-                    inserted += 1
-            finally:
-                await pool.close()
-        asyncio.run(pull())
+                inserted += 1
+        finally:
+            await pool.close()
     except Exception as exc:
         log.warning("history dump from Postgres failed (%s); leaving empty", exc)
     conn.commit()
@@ -387,7 +408,7 @@ async def main():
     counts.update(fetch_sentinel3(args.out / "sentinel3"))
     counts.update(await fetch_eumetsat(args.out))
     counts.update(build_tiles(args.out / "tiles"))
-    counts.update(build_history_sqlite(args.out))
+    counts.update(await build_history_sqlite(args.out))
     counts.update(write_aois(args.out / "aois.json"))
     counts.update(copy_metrics(args.out))
 
