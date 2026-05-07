@@ -1,3 +1,15 @@
+---
+title: Portugal Fire Detection
+emoji: 🔥
+colorFrom: red
+colorTo: yellow
+sdk: docker
+app_port: 8000
+pinned: false
+license: mit
+short_description: Multi-source satellite fire detection over Portugal (FastAPI + PyTorch demo)
+---
+
 # Portugal Fire Detection Web Application
 
 Multi-source satellite fire detection viewer for Portugal using VIIRS/MODIS NRT feeds (FIRMS), Meteosat FRP products (EUMETSAT), and Sentinel-2 for post-fire damage mapping.
