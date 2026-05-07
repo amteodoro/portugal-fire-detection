@@ -6,6 +6,8 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 
 from src.utils.limiter import limiter
+from src.utils.demo import is_demo
+from src.services.snapshot import read_sentinel3_scenes, read_sentinel3_fire_pixels
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,8 @@ def _parse_scene(path: Path) -> dict | None:
 @limiter.limit("30/minute")
 async def list_scenes(request: Request):
     """List available Sentinel-3 scene ZIPs sorted by date descending."""
+    if is_demo():
+        return read_sentinel3_scenes()
     if not S3_ZIP_DIR.exists():
         return []
 
@@ -54,6 +58,8 @@ async def list_scenes(request: Request):
 @limiter.limit("30/minute")
 async def fire_pixels(request: Request):
     """Return GeoJSON FeatureCollection of Sentinel-3 fire tile labels."""
+    if is_demo():
+        return read_sentinel3_fire_pixels()
     empty_fc = {"type": "FeatureCollection", "features": []}
 
     if not LABELS_DIR.exists():

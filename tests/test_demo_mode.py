@@ -44,15 +44,43 @@ def demo_app(tmp_path, monkeypatch):
     monkeypatch.setenv("APP_ENV", "development")  # bypass CORS strictness
     monkeypatch.setenv("CORS_ORIGINS", "http://localhost")
 
-    # Clear module cache for config-dependent modules
-    for mod in list(sys.modules.keys()):
-        if mod.startswith("src."):
-            del sys.modules[mod]
-
-    from src.utils import config as cfg
-    from src.services import snapshot as snap_mod
+    _reload_app_modules()
     from src import main as main_mod
-    return main_mod.app
+    yield main_mod.app
+
+    # Teardown: revert env vars, reload modules, and reset the
+    # in-memory rate limiter so subsequent tests in the same session
+    # start from a clean baseline. monkeypatch teardown runs after
+    # this, so we pop env vars explicitly here.
+    import os
+    for k in ("DEMO_MODE", "SNAPSHOT_DIR", "APP_ENV", "CORS_ORIGINS"):
+        os.environ.pop(k, None)
+    _reload_app_modules()
+    from src.utils.limiter import limiter
+    limiter._storage.reset()
+
+
+# Modules whose `from x import y` bindings depend on config / snapshot
+# module identity. Reloaded in dependency order so each one rebinds to
+# the freshly-loaded version of its dependencies.
+_RELOAD_ORDER = (
+    "src.utils.config",
+    "src.utils.demo",
+    "src.services.snapshot",
+    "src.api.firms",
+    "src.api.sentinel",
+    "src.api.sentinel3",
+    "src.api.eumetsat",
+    "src.api.aoi",
+    "src.api.inference",
+    "src.main",
+)
+
+
+def _reload_app_modules() -> None:
+    for name in _RELOAD_ORDER:
+        if name in sys.modules:
+            importlib.reload(sys.modules[name])
 
 
 def test_firms_viirs_returns_snapshot(demo_app):
@@ -70,3 +98,36 @@ def test_firms_modis_returns_empty_snapshot(demo_app):
         r = c.get("/api/firms/modis?days=1")
         assert r.status_code == 200
         assert r.json()["features"] == []
+
+
+def test_sentinel2_search_returns_manifest(demo_app, tmp_path):
+    snap = Path(tmp_path / "snapshot")
+    (snap / "sentinel2/manifest.json").write_text(json.dumps({
+        "items": [{"id": "S2_demo_1", "datetime": "2024-08-15", "thumb": "/static/snapshot/sentinel2/thumbnails/s2_demo_1.jpg"}]
+    }))
+    with TestClient(demo_app) as c:
+        r = c.get("/api/sentinel2/search?days=7&cloud_pct=20")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["items"][0]["id"] == "S2_demo_1"
+
+
+def test_sentinel3_fire_pixels_returns_geojson(demo_app, tmp_path):
+    (Path(tmp_path) / "snapshot/sentinel3/fire_pixels.geojson").write_text(json.dumps({
+        "type": "FeatureCollection", "features": []
+    }))
+    with TestClient(demo_app) as c:
+        r = c.get("/api/sentinel3/fire-pixels")
+        assert r.status_code == 200
+        assert r.json()["type"] == "FeatureCollection"
+
+
+def test_eumetsat_frp_returns_sample_when_present(demo_app, tmp_path):
+    sample = Path(tmp_path) / "snapshot/eumetsat_frp_sample.png"
+    sample.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\0" * 100)  # minimal PNG bytes
+    with TestClient(demo_app) as c:
+        r = c.get("/api/eumetsat/frp/latest")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["source"] == "EUMETSAT_FRP"
+        assert "path" in body
