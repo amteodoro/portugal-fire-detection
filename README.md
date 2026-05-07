@@ -227,6 +227,20 @@ Files older than 14 days are automatically cleaned up when the scheduler is enab
 - Increase search days (try 14 or 30 days)
 - Default Earth Search STAC may have different availability than Copernicus Data Space
 
+## Public Demo
+
+The repo ships with a frozen snapshot of fire activity at
+`data/snapshot/`. With `DEMO_MODE=true`, the app serves only this
+snapshot — no API keys are loaded, no databases are queried, no
+satellite data is fetched live.
+
+Refresh the snapshot:
+
+    docker-compose exec -e DEMO_MODE=false web uv run \
+      python ml/scripts/build_snapshot.py --start 2024-08-12 --end 2024-08-19
+
+Commit `data/snapshot/` (Git LFS-tracked) and redeploy.
+
 ## License
 
 [Add your license here]
