@@ -165,22 +165,118 @@ async def fetch_sentinel2(out: Path, start: date, end: date) -> dict:
     return {"sentinel2_items": len(items)}
 
 
-async def fetch_sentinel3(out: Path, start: date, end: date) -> dict:
-    """Search the Copernicus Data Space OData catalog (anonymous) for
-    Sentinel-3 SLSTR Level-2 Fire Radiative Power scenes over Portugal
-    in [start, end]. Persists scene metadata + footprint centroids.
+def _s3_path_to_key(s3_path: str) -> str:
+    """Strip the leading '/eodata/' prefix from an OData S3Path so it can
+    be used as an S3 object-key prefix on the eodata bucket."""
+    p = s3_path.lstrip("/")
+    return p[len("eodata/"):] if p.startswith("eodata/") else p
 
-    The actual per-pixel FRP grid lives inside each .SEN3 product and
-    requires authentication to download — that's beyond a free-tier
-    demo. The centroid points let the demo UI show where Sentinel-3
-    passed over Portugal during the snapshot window."""
+
+def _extract_fire_pixels_sync(
+    s3_client, prefix: str, scene_id: str, sat: str, dt: str,
+    bbox: tuple[float, float, float, float],
+) -> list[dict]:
+    """Download FRP_in.nc + FRP_an.nc from a SLSTR scene's S3 prefix and
+    return GeoJSON Features for fire pixels inside `bbox`.
+
+    Synchronous (boto3 + netCDF4 are sync); call from `asyncio.to_thread`."""
+    import tempfile
+    import netCDF4 as nc
+
+    lon_min, lat_min, lon_max, lat_max = bbox
+    features: list[dict] = []
+
+    # Inspect both nadir-views — `in` is the main, `an` covers the
+    # alternate stripe. SLSTR products historically vary, so try both
+    # and silently skip what's missing or empty.
+    for nc_name in ("FRP_in.nc", "FRP_an.nc"):
+        key = f"{prefix}{nc_name}"
+        with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tf:
+            tmp_path = tf.name
+        try:
+            try:
+                s3_client.download_file("eodata", key, tmp_path)
+            except Exception:
+                # File doesn't exist in this product — fine
+                continue
+            # Some products yield 0-byte FRP files; skip those quietly.
+            if Path(tmp_path).stat().st_size < 1024:
+                continue
+            try:
+                ds = nc.Dataset(tmp_path, "r")
+            except Exception:
+                # Malformed NetCDF — skip
+                continue
+            try:
+                if "latitude" not in ds.variables or "longitude" not in ds.variables:
+                    ds.close()
+                    continue
+                lats = ds.variables["latitude"][:]
+                lons = ds.variables["longitude"][:]
+                if len(lats) == 0:
+                    continue
+                frps = ds.variables["FRP_MWIR"][:] if "FRP_MWIR" in ds.variables else None
+                frp_unc = ds.variables["FRP_uncertainty_MWIR"][:] if "FRP_uncertainty_MWIR" in ds.variables else None
+                day_night = ds.variables["Day_night"][:] if "Day_night" in ds.variables else None
+                for i in range(len(lats)):
+                    lat, lon = float(lats[i]), float(lons[i])
+                    if not (lon_min <= lon <= lon_max and lat_min <= lat <= lat_max):
+                        continue
+                    props = {
+                        "scene_id": scene_id,
+                        "satellite": sat,
+                        "instrument": f"SLSTR_FRP_{nc_name[:-3]}",
+                        "date": dt,
+                        "tile_center_lat": lat,
+                        "tile_center_lon": lon,
+                        "label": 1,
+                    }
+                    if frps is not None:
+                        props["frp"] = float(frps[i])
+                    if frp_unc is not None:
+                        props["frp_uncertainty"] = float(frp_unc[i])
+                    if day_night is not None:
+                        props["day_night"] = int(day_night[i])
+                    features.append({
+                        "type": "Feature",
+                        "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                        "properties": props,
+                    })
+            finally:
+                ds.close()
+        finally:
+            try:
+                Path(tmp_path).unlink()
+            except OSError:
+                pass
+
+    return features
+
+
+async def fetch_sentinel3(out: Path, start: date, end: date, max_scenes: int = 50) -> dict:
+    """Fetch Sentinel-3 SLSTR L2 FRP scenes + per-pixel fire detections
+    for [start, end] over Portugal.
+
+    1. Catalog: anonymous OData query at catalogue.dataspace.copernicus.eu
+    2. Download: Copernicus S3 (eodata.dataspace.copernicus.eu) using
+       COPERNICUS_S3_ACCESS_KEY / COPERNICUS_S3_SECRET_KEY.
+       We download only the FRP_in.nc / FRP_an.nc files (~150–540 KB
+       each), not the full ~70 MB .SEN3 archive.
+    3. Parse: netCDF4 reads the lat/lon/FRP arrays, we filter to the
+       bbox.
+
+    Falls back to scene-centroid proxies for any scene whose S3 fetch
+    or netCDF parse fails. If S3 credentials aren't set, every scene
+    becomes a centroid (same behaviour as the anonymous-only path)."""
     import httpx
     from src.utils.config import settings
     from src.utils.geo import parse_bbox
 
-    lon_min, lat_min, lon_max, lat_max = parse_bbox(settings.PORTUGAL_BBOX)
+    bbox = parse_bbox(settings.PORTUGAL_BBOX)
+    lon_min, lat_min, lon_max, lat_max = bbox
     out.mkdir(parents=True, exist_ok=True)
 
+    # ── 1. Catalog query (anonymous) ──────────────────────────────────
     polygon_wkt = (
         f"POLYGON(({lon_min} {lat_min},{lon_max} {lat_min},"
         f"{lon_max} {lat_max},{lon_min} {lat_max},{lon_min} {lat_min}))"
@@ -193,73 +289,118 @@ async def fetch_sentinel3(out: Path, start: date, end: date) -> dict:
         "and contains(Name, 'SL_2_FRP')"
     )
     odata_url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
-    params = {"$filter": odata_filter, "$top": 200, "$orderby": "ContentDate/Start desc"}
+    params = {"$filter": odata_filter, "$top": max_scenes, "$orderby": "ContentDate/Start desc"}
 
-    scenes: list[dict[str, Any]] = []
-    fire_features: list[dict[str, Any]] = []
-
+    products: list[dict] = []
     try:
         async with httpx.AsyncClient(timeout=30) as c:
             r = await c.get(odata_url, params=params)
             r.raise_for_status()
-            data = r.json()
-            for prod in data.get("value", []):
-                name = prod.get("Name", "")
-                content_date = prod.get("ContentDate", {})
-                dt = (content_date.get("Start") or "")[:10]
-                # Name format: S3{A,B}_SL_2_FRP____<datetime>_..._<flags>.SEN3
-                sat = name[:3]  # S3A or S3B
-                geom = prod.get("GeoFootprint") or {}
-                scene_id = name.replace(".SEN3", "")
-
-                scenes.append({
-                    "scene_id": scene_id,
-                    "satellite": sat,
-                    "instrument": "SLSTR_FRP",
-                    "date": dt,
-                    "size_mb": round((prod.get("ContentLength") or 0) / (1024 * 1024), 1),
-                    "geometry": geom,
-                })
-
-                # Centroid of the scene footprint as a single fire-pixel proxy
-                if geom.get("type") in ("Polygon", "MultiPolygon") and geom.get("coordinates"):
-                    if geom["type"] == "MultiPolygon":
-                        ring = geom["coordinates"][0][0]
-                    else:
-                        ring = geom["coordinates"][0]
-                    if ring:
-                        lons = [pt[0] for pt in ring]
-                        lats = [pt[1] for pt in ring]
-                        cx = sum(lons) / len(lons)
-                        cy = sum(lats) / len(lats)
-                        # Only emit a centroid when it actually falls inside
-                        # the requested bbox — a S3 swath is huge and most
-                        # centroids will be far from Portugal.
-                        if lon_min <= cx <= lon_max and lat_min <= cy <= lat_max:
-                            fire_features.append({
-                                "type": "Feature",
-                                "geometry": {"type": "Point", "coordinates": [cx, cy]},
-                                "properties": {
-                                    "scene_id": scene_id,
-                                    "satellite": sat,
-                                    "instrument": "SLSTR_FRP",
-                                    "date": dt,
-                                    "tile_center_lat": cy,
-                                    "tile_center_lon": cx,
-                                    "label": 1,
-                                    "note": "scene-centroid proxy (full FRP grid requires Copernicus auth)",
-                                },
-                            })
+            products = r.json().get("value", [])
     except Exception as exc:
         log.warning("Sentinel-3 OData search failed: %s", exc)
+
+    # ── 2. Optional S3 client for fire-pixel extraction ───────────────
+    s3_client = None
+    if settings.COPERNICUS_S3_ACCESS_KEY and settings.COPERNICUS_S3_SECRET_KEY:
+        import boto3
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url="https://eodata.dataspace.copernicus.eu",
+            aws_access_key_id=settings.COPERNICUS_S3_ACCESS_KEY,
+            aws_secret_access_key=settings.COPERNICUS_S3_SECRET_KEY,
+            region_name="default",
+        )
+        log.info("Sentinel-3: Copernicus S3 creds present — extracting fire pixels")
+    else:
+        log.info("Sentinel-3: no Copernicus S3 creds — using centroid proxies only")
+
+    scenes: list[dict[str, Any]] = []
+    fire_features: list[dict[str, Any]] = []
+
+    # ── 3. Per-scene processing (bounded concurrency) ─────────────────
+    sem = asyncio.Semaphore(4)
+
+    async def process(prod: dict) -> tuple[dict, list[dict]]:
+        name = prod.get("Name", "")
+        content_date = prod.get("ContentDate", {})
+        dt = (content_date.get("Start") or "")[:10]
+        sat = name[:3]  # S3A or S3B
+        geom = prod.get("GeoFootprint") or {}
+        scene_id = name.replace(".SEN3", "")
+        scene_meta = {
+            "scene_id": scene_id,
+            "satellite": sat,
+            "instrument": "SLSTR_FRP",
+            "date": dt,
+            "size_mb": round((prod.get("ContentLength") or 0) / (1024 * 1024), 1),
+            "geometry": geom,
+        }
+
+        pixels: list[dict] = []
+        if s3_client is not None:
+            s3_path = prod.get("S3Path", "")
+            prefix = _s3_path_to_key(s3_path).rstrip("/") + "/"
+            async with sem:
+                try:
+                    pixels = await asyncio.to_thread(
+                        _extract_fire_pixels_sync,
+                        s3_client, prefix, scene_id, sat, dt, bbox,
+                    )
+                except Exception as exc:
+                    log.warning("S3 extract failed for %s: %s", scene_id, exc)
+                    pixels = []
+
+        # If no pixels (either no creds, or scene had no fires inside bbox),
+        # fall back to a single scene-centroid feature when the centroid
+        # itself lies inside the bbox.
+        if not pixels and geom.get("coordinates"):
+            ring = (
+                geom["coordinates"][0][0]
+                if geom.get("type") == "MultiPolygon"
+                else geom["coordinates"][0]
+            )
+            if ring:
+                lons = [pt[0] for pt in ring]
+                lats = [pt[1] for pt in ring]
+                cx, cy = sum(lons) / len(lons), sum(lats) / len(lats)
+                if lon_min <= cx <= lon_max and lat_min <= cy <= lat_max:
+                    pixels = [{
+                        "type": "Feature",
+                        "geometry": {"type": "Point", "coordinates": [cx, cy]},
+                        "properties": {
+                            "scene_id": scene_id,
+                            "satellite": sat,
+                            "instrument": "SLSTR_FRP",
+                            "date": dt,
+                            "tile_center_lat": cy,
+                            "tile_center_lon": cx,
+                            "label": 1,
+                            "note": "scene-centroid proxy (no fire pixels detected in this scene)",
+                        },
+                    }]
+
+        return scene_meta, pixels
+
+    if products:
+        results = await asyncio.gather(*(process(p) for p in products))
+        for scene_meta, pixels in results:
+            scenes.append(scene_meta)
+            fire_features.extend(pixels)
 
     (out / "scenes.geojson").write_text(json.dumps(scenes))
     (out / "fire_pixels.geojson").write_text(json.dumps({
         "type": "FeatureCollection", "features": fire_features
     }))
-    log.info("Sentinel-3: %d scenes, %d centroid pixels over %s..%s",
-             len(scenes), len(fire_features), start, end)
-    return {"sentinel3_scenes": len(scenes), "sentinel3_fires": len(fire_features)}
+    log.info("Sentinel-3: %d scenes, %d fire pixels (%s) over %s..%s",
+             len(scenes), len(fire_features),
+             "real" if s3_client else "centroid",
+             start, end)
+    return {
+        "sentinel3_scenes": len(scenes),
+        "sentinel3_fires": len(fire_features),
+        "sentinel3_mode": "s3_fire_pixels" if s3_client else "centroid_only",
+    }
 
 
 async def fetch_eumetsat(out: Path, start: date, end: date) -> dict:
