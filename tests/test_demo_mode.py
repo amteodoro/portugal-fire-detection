@@ -167,3 +167,39 @@ def test_aoi_list_returns_snapshot_aois(demo_app, tmp_path):
         body = r.json()
         assert len(body) == 1
         assert body[0]["name"] == "Demo AOI"
+
+
+def test_inference_status_reports_demo(demo_app):
+    with TestClient(demo_app) as c:
+        r = c.get("/api/inference/status")
+        body = r.json()
+        assert body["loaded"] is False
+        assert body["demo"] is True
+
+
+def test_inference_predict_uses_snapshot(demo_app, tmp_path):
+    preds = {"tiles": [
+        {"tile_id": "tile_001", "lat": 39.5, "lon": -7.5,
+         "fire_probability": 0.97, "is_fire": True, "y_true": 1,
+         "outcome": "tp", "scene_date": "2024-08-15", "cloud_cover": 5.0},
+    ]}
+    (Path(tmp_path) / "snapshot/tiles/predictions.json").write_text(json.dumps(preds))
+    with TestClient(demo_app) as c:
+        r = c.post("/api/inference/predict", json={
+            "lat": 39.5, "lon": -7.5, "live": True,
+        })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["tile_id"] == "tile_001"
+        assert body["fire_probability"] == 0.97
+        assert body["source"] == "demo_snapshot"
+
+
+def test_inference_metrics_reads_snapshot(demo_app, tmp_path):
+    (Path(tmp_path) / "snapshot/metrics.json").write_text(json.dumps({
+        "f1": 0.985, "auc": 0.996,
+    }))
+    with TestClient(demo_app) as c:
+        r = c.get("/api/inference/metrics")
+        assert r.status_code == 200
+        assert r.json()["f1"] == 0.985

@@ -22,8 +22,12 @@ logger = logging.getLogger(__name__)
 def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        from src.utils.demo import is_demo
         checkpoint = settings.MODEL_CHECKPOINT_PATH
-        if Path(checkpoint).exists():
+        if is_demo():
+            app.state.predictor = None
+            logger.info("DEMO_MODE: skipping PyTorch model load")
+        elif Path(checkpoint).exists():
             try:
                 from ml.inference.predictor import FirePredictor
                 app.state.predictor = FirePredictor(checkpoint)
