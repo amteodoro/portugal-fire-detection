@@ -110,15 +110,16 @@ def create_app() -> FastAPI:
     app.include_router(eumetsat.router, prefix="/api/eumetsat", tags=["EUMETSAT"])
     app.include_router(sentinel.router, prefix="/api/sentinel2", tags=["Sentinel-2"])
     app.include_router(images.router, prefix="/api/images", tags=["Images"])
-    app.include_router(dataset.router, prefix="/api/dataset", tags=["Dataset"])
-    app.include_router(dataset_summary.router, prefix="/api/dataset", tags=["Dataset"])
-    app.include_router(dataset_scenes.router, prefix="/api/dataset", tags=["Dataset"])
-    app.include_router(dataset_training.router, prefix="/api/dataset", tags=["Dataset"])
+    if not settings.DEMO_MODE:
+        app.include_router(dataset.router, prefix="/api/dataset", tags=["Dataset"])
+        app.include_router(dataset_summary.router, prefix="/api/dataset", tags=["Dataset"])
+        app.include_router(dataset_scenes.router, prefix="/api/dataset", tags=["Dataset"])
+        app.include_router(dataset_training.router, prefix="/api/dataset", tags=["Dataset"])
     app.include_router(inference.router, prefix="/api/inference", tags=["Inference"])
     app.include_router(sentinel3.router, prefix="/api/sentinel3", tags=["Sentinel-3"])
     app.include_router(aoi.router, prefix="/api/aoi", tags=["AOI"])
 
-    if settings.SCHEDULER_ENABLED:
+    if settings.SCHEDULER_ENABLED and not settings.DEMO_MODE:
         scheduler = AsyncIOScheduler(timezone=settings.TIMEZONE)
         firms.register_jobs(scheduler)
         eumetsat.register_jobs(scheduler)

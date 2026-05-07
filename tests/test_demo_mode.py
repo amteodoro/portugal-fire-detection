@@ -203,3 +203,11 @@ def test_inference_metrics_reads_snapshot(demo_app, tmp_path):
         r = c.get("/api/inference/metrics")
         assert r.status_code == 200
         assert r.json()["f1"] == 0.985
+
+
+def test_dataset_routes_404_in_demo(demo_app):
+    with TestClient(demo_app) as c:
+        r = c.get("/api/dataset/summary")
+        assert r.status_code == 404
+        r = c.post("/api/dataset/cache/delete", json={"cache_type": "all"})
+        assert r.status_code == 404
