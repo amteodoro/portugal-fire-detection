@@ -38,6 +38,8 @@ jobs:
           push: false
           load: true
           tags: portugal-fire-detection:ci
+          build-args: |
+            INCLUDE_SNAPSHOT=false
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
 
@@ -49,6 +51,7 @@ jobs:
       - name: Run tests
         run: |
           docker run --rm \
+            -e DEMO_MODE=false \
             -e FIRMS_API_KEY="" \
             -e SCHEDULER_ENABLED=false \
             portugal-fire-detection:ci \
@@ -66,13 +69,14 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image
-        run: docker build -t portugal-fire-detection:smoke .
+        run: docker build --build-arg INCLUDE_SNAPSHOT=false -t portugal-fire-detection:smoke .
 
       - name: Start container and health check
         run: |
           docker run --rm -d \
             --name fire-smoke \
             -p 8000:8000 \
+            -e DEMO_MODE=false \
             -e FIRMS_API_KEY="" \
             -e SCHEDULER_ENABLED=false \
             portugal-fire-detection:smoke

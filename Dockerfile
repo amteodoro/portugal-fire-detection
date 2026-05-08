@@ -1,5 +1,22 @@
 # syntax=docker/dockerfile:1.6
 ARG INCLUDE_MODEL=false
+ARG INCLUDE_SNAPSHOT=true
+
+# ─── Optional snapshot stage ─────────────────────────────────────────
+# `INCLUDE_SNAPSHOT=true` (the default, used by the Hugging Face Space
+# build) bundles `data/` and `ml/training/checkpoints/`. CI sets it to
+# `false` so origin builds — where those directories are gitignored —
+# still pass. BuildKit only materialises the reachable stage, so the
+# `snapshot-true` COPYs never run when the arg is `false`.
+FROM busybox AS snapshot-false
+RUN mkdir -p /snapshot/data /snapshot/checkpoints
+
+FROM busybox AS snapshot-true
+RUN mkdir -p /snapshot/data /snapshot/checkpoints
+COPY data /snapshot/data
+COPY ml/training/checkpoints /snapshot/checkpoints
+
+FROM snapshot-${INCLUDE_SNAPSHOT} AS snapshot
 
 # ─── Builder stage: install Python deps via uv ──────────────────────
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm AS builder
@@ -24,23 +41,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdal32 libgeos-c1v5 libproj25 \
     && rm -rf /var/lib/apt/lists/*
 
-# Bring the resolved venv from the builder
 COPY --from=builder /app/.venv /app/.venv
 
-# Application code
 COPY src ./src
 COPY ml/inference ./ml/inference
 COPY ml/models ./ml/models
 
-# Snapshot — copied if present (allowed to be missing in early CI builds).
-# The trailing slash and absent files are tolerated by buildkit.
-COPY data ./data
+COPY --from=snapshot /snapshot/data ./data
+COPY --from=snapshot /snapshot/checkpoints ./ml/training/checkpoints
 
-# Checkpoint metadata + the heavy weights file. We always copy the
-# directory to keep the JSON metrics, then conditionally strip the
-# 57 MB checkpoint when INCLUDE_MODEL is not "true".
-RUN mkdir -p ml/training/checkpoints
-COPY ml/training/checkpoints/ ml/training/checkpoints/
 RUN if [ "$INCLUDE_MODEL" != "true" ]; then \
         rm -f ml/training/checkpoints/best_model.pth; \
     fi
