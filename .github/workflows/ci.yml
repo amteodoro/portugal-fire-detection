@@ -31,15 +31,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildx-
 
-      - name: Build Docker image
+      - name: Build test image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: false
           load: true
-          tags: portugal-fire-detection:ci
-          build-args: |
-            INCLUDE_SNAPSHOT=false
+          target: test
+          tags: portugal-fire-detection:test
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
 
@@ -54,8 +53,7 @@ jobs:
             -e DEMO_MODE=false \
             -e FIRMS_API_KEY="" \
             -e SCHEDULER_ENABLED=false \
-            portugal-fire-detection:ci \
-            uv run pytest --tb=short -q
+            portugal-fire-detection:test
 
   docker-smoke:
     name: Docker Startup Smoke Test

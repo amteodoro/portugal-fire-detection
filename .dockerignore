@@ -16,8 +16,8 @@ ml/training/runs/
 .env.*
 !.env.example
 
-# Tests, docs, IDE
-tests/
+# Tests are needed by the `test` build target (CI). The runtime stage
+# never COPYs them, so they don't bloat the production image.
 docs/
 .git/
 .github/

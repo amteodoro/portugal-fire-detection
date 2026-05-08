@@ -29,6 +29,19 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev || uv sync --no-dev
 
 
+# ─── Test stage: same base as builder but with dev deps + tests ─────
+# Used by CI only — never reaches the runtime image.
+FROM builder AS test
+RUN uv sync --frozen --group dev
+COPY src ./src
+COPY ml ./ml
+COPY tests ./tests
+COPY alembic ./alembic
+COPY alembic.ini ./
+ENV PYTHONPATH=/app
+CMD ["uv", "run", "pytest", "--tb=short", "-q"]
+
+
 # ─── Runtime stage: slim Python + venv from builder ─────────────────
 FROM python:3.12-slim-bookworm AS runtime
 ARG INCLUDE_MODEL
