@@ -592,16 +592,119 @@ def write_aois(out: Path) -> dict:
 
 
 def copy_metrics(out: Path) -> dict:
-    """Copy ml/training/checkpoints/{test_metrics,test_predictions}.json."""
-    counts = {}
+    """Copy ml/training/checkpoints/{test_metrics,test_predictions}.json
+    and augment test_predictions.json with:
+      - parsed lat/lon for tile_ids that embed coordinates
+      - a precomputed ROC curve (the live `/api/inference/roc-data`
+        reads `roc` from this file, otherwise returns empty arrays)
+    Also renders a PNG for every test tile that has a corresponding
+    .npy in ml/data/processed/splits/, so the Model Eval tile browser
+    has imagery for all 644 entries instead of just the 10 from
+    `build_tiles`."""
+    import re as _re
+    import numpy as np
+    from PIL import Image as _PilImage
+
+    counts: dict[str, Any] = {}
     src_metrics = Path("ml/training/checkpoints/test_metrics.json")
     if src_metrics.exists():
         shutil.copy(src_metrics, out / "metrics.json")
         counts["metrics"] = True
+
     src_preds = Path("ml/training/checkpoints/test_predictions.json")
-    if src_preds.exists():
-        shutil.copy(src_preds, out / "test_predictions.json")
-        counts["test_predictions"] = True
+    if not src_preds.exists():
+        return counts
+
+    preds = json.loads(src_preds.read_text(encoding="utf-8"))
+    tiles = preds.get("tiles", [])
+
+    # ── 1. Parse lat/lon from tile_ids that embed them.
+    # Matches "..._<lat>_<lon>_(positive|negative)_<idx>" anywhere in the id.
+    coord_re = _re.compile(r"_(-?\d+\.\d+)_(-?\d+\.\d+)_(?:positive|negative)_\d+$")
+    n_coords_filled = 0
+    for t in tiles:
+        if t.get("lat") is None or t.get("lon") is None:
+            m = coord_re.search(t.get("tile_id", ""))
+            if m:
+                t["lat"] = float(m.group(1))
+                t["lon"] = float(m.group(2))
+                n_coords_filled += 1
+    counts["pred_coords_recovered"] = n_coords_filled
+
+    # ── 2. Compute ROC if missing.
+    if not preds.get("roc") or not preds["roc"].get("fpr"):
+        try:
+            from sklearn.metrics import roc_curve, roc_auc_score
+            y_true = [t["y_true"] for t in tiles]
+            probs  = [t["fire_probability"] for t in tiles]
+            if y_true and len(set(y_true)) > 1:
+                import math
+                fpr, tpr, thr = roc_curve(y_true, probs)
+                # sklearn prepends +inf as the first threshold so the
+                # ROC starts at (0, 0); JSON can't carry inf, so cap it
+                # at 1 + max(probs).
+                thr_clean = [
+                    (1.0 + max(probs)) if math.isinf(float(x)) else float(x)
+                    for x in thr
+                ]
+                preds["roc"] = {
+                    "fpr": [float(x) for x in fpr],
+                    "tpr": [float(x) for x in tpr],
+                    "thresholds": thr_clean,
+                    "auc": float(roc_auc_score(y_true, probs)),
+                }
+                counts["pred_roc"] = True
+        except Exception as exc:
+            log.warning("ROC computation skipped: %s", exc)
+
+    (out / "test_predictions.json").write_text(json.dumps(preds))
+    counts["test_predictions"] = len(tiles)
+
+    # ── 3. Render a PNG for every test tile (false-color SWIR2/NIR/Red).
+    tiles_out = out / "tiles"
+    tiles_out.mkdir(parents=True, exist_ok=True)
+    splits_dir = Path("ml/data/processed/splits")
+
+    def _norm(b: np.ndarray) -> np.ndarray:
+        v = b[np.isfinite(b)]
+        if not len(v):
+            return np.zeros(b.shape, dtype=np.uint8)
+        p2, p98 = np.percentile(v, (2, 98))
+        if p98 - p2 < 1e-6:
+            return np.full(b.shape, 128, dtype=np.uint8)
+        return np.clip((b - p2) / (p98 - p2) * 255, 0, 255).astype(np.uint8)
+
+    rendered = 0
+    skipped = 0
+    if splits_dir.exists():
+        # Build a quick index: tile_id → npy path. Avoids rglob per-tile.
+        npy_index = {p.stem: p for p in splits_dir.rglob("*.npy")}
+        for t in tiles:
+            tid = t.get("tile_id", "")
+            png = tiles_out / f"{tid}.png"
+            if png.exists():
+                continue
+            npy = npy_index.get(tid)
+            if npy is None:
+                skipped += 1
+                continue
+            try:
+                arr = np.load(npy)
+                rgb = np.stack([
+                    _norm(arr[3] if arr.shape[0] > 3 else arr[-1]),
+                    _norm(arr[1] if arr.shape[0] > 1 else arr[0]),
+                    _norm(arr[0]),
+                ], axis=-1)
+                _PilImage.fromarray(rgb, "RGB").save(png)
+                rendered += 1
+            except Exception as exc:
+                log.warning("PNG render failed for %s: %s", tid, exc)
+                skipped += 1
+    counts["pred_pngs_rendered"] = rendered
+    counts["pred_pngs_skipped"] = skipped
+    log.info("test predictions augmented: roc=%s coords=%d PNGs=%d skipped=%d",
+             "yes" if counts.get("pred_roc") else "preexisting",
+             n_coords_filled, rendered, skipped)
     return counts
 
 

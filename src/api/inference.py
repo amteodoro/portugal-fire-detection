@@ -103,7 +103,9 @@ async def test_results(
                 raise HTTPException(status_code=400, detail=f"outcome must be one of {valid_outcomes}")
             tiles = [t for t in tiles if t["outcome"] == outcome]
         total = len(tiles)
-        limit_eff = min(limit, 100)
+        # Demo serves the full bundled set so the prob-distribution and
+        # geo-distribution charts plot every test tile.
+        limit_eff = min(limit, 5000)
         page = tiles[offset: offset + limit_eff]
         return {
             "model_version": data.get("model_version", "snapshot"),
