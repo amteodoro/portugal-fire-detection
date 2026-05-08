@@ -74,13 +74,17 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def cache_headers(request, call_next):
         response = await call_next(request)
+        # Never cache non-2xx — a cached 404/500 outlives the underlying
+        # condition and breaks the UI for hours after the fix lands.
+        if response.status_code >= 300:
+            return response
         path = request.url.path
         if path.startswith("/static/"):
             response.headers.setdefault("Cache-Control", "public, max-age=86400")
         elif path.startswith("/api/firms/"):
             response.headers.setdefault("Cache-Control", "public, max-age=300")
         elif path.startswith("/api/inference/metrics"):
-            response.headers.setdefault("Cache-Control", "public, max-age=86400")
+            response.headers.setdefault("Cache-Control", "public, max-age=300")
         return response
 
     def _demo_state() -> dict:

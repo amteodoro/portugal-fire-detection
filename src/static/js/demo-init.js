@@ -20,8 +20,7 @@
     const range = r.start && r.end ? `${r.start} → ${r.end}` : 'frozen snapshot';
     banner.innerHTML =
       `<strong>DEMO MODE</strong> — read-only snapshot of Portugal fires (${range}). ` +
-      `Live data fetching, AOI subscriptions, training, and cache management are disabled. ` +
-      `<a href="https://github.com/amteodoro/portugal-fire-detection" target="_blank" rel="noopener">View source on GitHub</a>`;
+      `Live data fetching, AOI subscriptions, training, and cache management are disabled.`;
     banner.style.display = 'block';
   }
 
