@@ -7,7 +7,7 @@ sdk: docker
 app_port: 8000
 pinned: false
 license: mit
-short_description: Multi-source satellite fire detection over Portugal (FastAPI + PyTorch demo)
+short_description: Multi-source satellite fire detection demo for Portugal
 ---
 
 # Portugal Fire Detection Web Application
