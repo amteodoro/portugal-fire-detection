@@ -1,40 +1,27 @@
-# Large data directories (mounted as volumes at runtime)
-data/
-# Exclude large ml artifacts — Python source is still copied for tests
+# Large training corpus (38 GB) — NEVER ship
+data/ml/
+data/firms/
+data/sentinel2/
+data/eumetsat/
+data/live_tiles/
+data/samples/
 ml/data/
-ml/training/
+ml/training/runs/
 
-# Git
-.git/
-.gitignore
+# Snapshot belongs in the image
+!data/snapshot/
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.venv/
-venv/
-ENV/
-.eggs/
-*.egg-info/
-*.egg
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Misc
-*.log
-*.md
-!README.md
+# Secrets
 .env
 .env.*
 !.env.example
+
+# Tests are needed by the `test` build target (CI). The runtime stage
+# never COPYs them, so they don't bloat the production image.
+docs/
+.git/
+.github/
+.idea/
+.vscode/
+*.md
+!README.md

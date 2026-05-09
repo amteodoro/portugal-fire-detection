@@ -126,3 +126,57 @@ class TestCachingUtils:
 
         assert os.path.exists(cache_dir)
         assert os.path.exists(os.path.join(cache_dir, "test_key.json"))
+
+
+def test_demo_mode_defaults_false(monkeypatch):
+    monkeypatch.delenv("DEMO_MODE", raising=False)
+    from src.utils.config import Settings
+    s = Settings()
+    assert s.DEMO_MODE is False
+    assert s.SNAPSHOT_DIR == "data/snapshot"
+
+
+def test_demo_mode_can_be_enabled(monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "true")
+    from src.utils.config import Settings
+    s = Settings()
+    assert s.DEMO_MODE is True
+
+
+def test_is_demo_returns_settings_value(monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "true")
+    # Force Settings re-read
+    import importlib
+    from src.utils import config as config_mod
+    importlib.reload(config_mod)
+    from src.utils import demo as demo_mod
+    importlib.reload(demo_mod)
+    assert demo_mod.is_demo() is True
+
+
+def test_demo_blocked_raises_when_demo(monkeypatch):
+    from fastapi import HTTPException
+    monkeypatch.setenv("DEMO_MODE", "true")
+    import importlib
+    from src.utils import config as config_mod
+    importlib.reload(config_mod)
+    from src.utils import demo as demo_mod
+    importlib.reload(demo_mod)
+    try:
+        demo_mod.demo_blocked("nope")
+    except HTTPException as e:
+        assert e.status_code == 403
+        assert "nope" in e.detail
+    else:
+        raise AssertionError("expected HTTPException")
+
+
+def test_demo_blocked_noop_when_not_demo(monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "false")
+    import importlib
+    from src.utils import config as config_mod
+    importlib.reload(config_mod)
+    from src.utils import demo as demo_mod
+    importlib.reload(demo_mod)
+    # Should not raise
+    demo_mod.demo_blocked("nope")

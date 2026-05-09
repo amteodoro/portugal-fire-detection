@@ -1,236 +1,163 @@
-# Portugal Fire Detection Web Application
+---
+title: Portugal Fire Detection
+emoji: 🔥
+colorFrom: red
+colorTo: yellow
+sdk: docker
+app_port: 8000
+pinned: false
+license: mit
+short_description: Multi-source satellite fire detection demo for Portugal
+---
 
-Multi-source satellite fire detection viewer for Portugal using VIIRS/MODIS NRT feeds (FIRMS), Meteosat FRP products (EUMETSAT), and Sentinel-2 for post-fire damage mapping.
+# Portugal Fire Detection
 
-## Features
+A web app that aggregates active-fire and post-fire data over Portugal
+from four public satellite sources and runs a small CNN over Sentinel-2
+tiles to flag scenes that look like burning vegetation. Built as a
+personal project to learn FastAPI, PostGIS, and on-device remote-sensing
+inference end to end.
 
-### Fire Detection & Monitoring
-- **VIIRS/MODIS Active Fire Detection** via NASA FIRMS API (country-scoped to Portugal)
-- **Historical Fire Data** - View fire detections up to 365 days back
-- **Meteosat FRP Continuous Monitoring** via EUMETSAT WMS overlay (optional)
-- **Sentinel-2 Post-Fire Damage Mapping** via STAC catalog search
-- **Fire Heatmap Visualization** - See fire intensity patterns
+**Live demo:**
+[huggingface.co/spaces/ateodoro/portugal-fires](https://huggingface.co/spaces/ateodoro/portugal-fires)
+(read-only, served from a frozen August-2025 snapshot).
 
-### Geographic Coverage
-- **Mainland Portugal** - Full coverage
-- **Madeira** - Island region support
-- **Açores** - Island region support
-- **Multi-Region View** - See all regions at once
+## What it does
 
-### Data Management
-- **CSV Export** - Download fire detection data for analysis
-- **Interactive Leaflet Map** with layer controls
-- **Real-time Status Monitoring** - See what's loading and any errors
-- **Aggressive Caching** to minimize API usage during testing
-- **Docker-Based Environment** with uv package management
+- Pulls near-real-time active-fire detections from
+  [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) — VIIRS and MODIS
+  — country-scoped to Portugal (mainland, Madeira, Açores).
+- Overlays Meteosat fire-radiative-power tiles from
+  [EUMETSAT](https://view.eumetsat.int/) and Sentinel-3 SLSTR FRP
+  granules from Copernicus Data Space.
+- Searches the [STAC](https://stacspec.org/) catalog for recent
+  Sentinel-2 imagery, useful for post-fire burn-scar inspection.
+- Runs a 4-channel MobileViT classifier (≈58 MB checkpoint) over
+  user-uploaded or stored tiles and returns a fire probability with a
+  small ROC/threshold UI.
+- Supports drawn areas-of-interest with email notifications when a fire
+  is detected within a polygon.
+- Logs an F1 score weekly against a held-out evaluation set so model
+  drift is visible over time.
 
-## Prerequisites
+## Stack
 
-- Docker
-- Docker Compose
-- API Keys (see below)
+- Python 3.12, FastAPI, httpx, APScheduler, SlowAPI rate limiting
+- PostGIS via SQLAlchemy 2 async + Alembic
+- PyTorch + HuggingFace `transformers` (MobileViT)
+- Vanilla JS + Leaflet on the frontend (no build step)
+- `uv` for dependency management; everything runs through Docker
+  Compose
 
-## API Key Registration
+## Quick start
 
-### Required:
-- **NASA FIRMS**: Register at https://firms.modaps.eosdis.nasa.gov/api/ to get your API key
+You need Docker, Docker Compose, and a free
+[FIRMS API key](https://firms.modaps.eosdis.nasa.gov/api/).
 
-### Optional (for enhanced features):
-- **EUMETSAT**: Register at https://eoportal.eumetsat.int/ for WMS token (public WMS available)
-- **Copernicus Data Space**: Register at https://dataspace.copernicus.eu/ (defaults to public Earth Search STAC)
+    cp .env.example .env
+    # paste your FIRMS_API_KEY into .env
+    docker-compose up --build
 
-## Setup
+Open http://localhost:8000.
 
-1. **Clone the repository** (if not already in it):
-   ```bash
-   cd portugal-fire-detection
-   ```
+EUMETSAT and Copernicus credentials are optional — the app falls back
+to public WMS layers and the Element 84 STAC mirror if you don't
+provide them.
 
-2. **Create `.env` file from template**:
-   ```bash
-   cp .env.example .env
-   ```
+## Demo mode
 
-3. **Edit `.env` and add your API keys**:
-   ```bash
-   # At minimum, add your FIRMS API key:
-   FIRMS_API_KEY=your_actual_api_key_here
-   ```
+Set `DEMO_MODE=true` and the app stops calling external services
+entirely. Every endpoint reads from `data/snapshot/`, a frozen bundle
+written by `ml/scripts/build_snapshot.py`. AOI writes are blocked, the
+scheduler doesn't start, and the model load is skipped.
 
-4. **Build and run the Docker container**:
-   ```bash
-   docker-compose up --build
-   ```
+This is what the Hugging Face Space runs. To regenerate the bundle:
 
-5. **Open the web application**:
-   Navigate to http://localhost:8000
+    docker-compose exec web uv run \
+      python ml/scripts/build_snapshot.py --start 2025-08-01 --end 2025-08-14
 
-## Usage
+## API
 
-### Web Interface
+Selected endpoints — see `src/api/` for the full surface.
 
-#### Region Selection
-- Use the **Region** dropdown to switch between:
-  - Mainland Portugal
-  - Madeira
-  - Açores
-  - All Regions view
+| Method | Path                                | Purpose                          |
+|--------|-------------------------------------|----------------------------------|
+| GET    | `/api/health`                       | Liveness + `demo` flag           |
+| GET    | `/api/firms/viirs?days=N`           | VIIRS active fires (1–365)       |
+| GET    | `/api/firms/modis?days=N`           | MODIS active fires (1–365)       |
+| GET    | `/api/firms/history`                | Aggregated historical detections |
+| GET    | `/api/eumetsat/frp/latest`          | Latest Meteosat FRP overlay      |
+| GET    | `/api/sentinel2/search`             | STAC search for S2 scenes        |
+| GET    | `/api/sentinel3/frp`                | S3 SLSTR FRP granule extract     |
+| GET    | `/api/inference/model-info`         | Model + training metadata        |
+| POST   | `/api/inference/predict`            | Run inference on a tile          |
+| GET    | `/api/aoi`, `POST /api/aoi`         | List/create AOIs                 |
 
-#### Fire Detection Layers
-- **VIIRS Layer**: Toggle to show/hide VIIRS fire detections (checked by default)
-- **MODIS Layer**: Toggle to show/hide MODIS fire detections
-- **Fire Heatmap**: Toggle to show fire intensity heatmap
-- **Meteosat FRP Layer**: Toggle to show/hide FRP overlay image (if configured)
+## Layout
 
-#### Time Period Selection
-- **Time Period Dropdown**: View fires from:
-  - Last 24 hours
-  - Last 2-7 days
-  - Last 2-4 weeks
-  - Last 1-6 months
-  - Last year (365 days)
-- **Refresh Button**: Manually update fire data
-
-#### Data Export
-- **Export to CSV**: Download all fire detection data with:
-  - Date/Time
-  - Latitude/Longitude
-  - Confidence percentage
-  - Fire Radiative Power (FRP)
-  - Data source
-
-#### Post-Fire Assessment
-- **Sentinel-2 Search**: Configure days and cloud cover percentage, then click "Search" to fetch satellite imagery thumbnails
-
-### API Endpoints
-
-All endpoints return JSON (except images):
-
-- `GET /api/health` - Health check
-- `GET /api/firms/viirs?days=1` - VIIRS fire detections (1-7 days)
-- `GET /api/firms/modis?days=1` - MODIS fire detections (1-7 days)
-- `GET /api/eumetsat/frp/latest` - Latest Meteosat FRP image metadata
-- `GET /api/sentinel2/search?days=7&cloud_pct=20&limit=12` - Sentinel-2 STAC search
-- `GET /api/sentinel2/thumbnail?days=7&cloud_pct=20` - Latest Sentinel-2 thumbnail
-- `GET /api/images/{folder}/{filename}` - Serve cached images
-
-## Configuration
-
-### Geographic Scope
-
-The `PORTUGAL_BBOX` in `.env` defines the bounding box:
-```
-PORTUGAL_BBOX=-9.5,36.8,-6.0,42.3  # Mainland Portugal
-```
-
-To include Madeira and Açores, adjust coordinates accordingly.
-
-### Background Scheduler
-
-By default, `SCHEDULER_ENABLED=false` to minimize API usage during testing. When enabled:
-- FIRMS: Fetches every 30 minutes
-- EUMETSAT FRP: Fetches every 1 hour
-- Sentinel-2: Searches daily at 02:00 UTC
-- Cleanup: Runs daily at 03:00 UTC (14-day retention)
-
-### Cache TTLs
-
-Adjust cache durations in `.env`:
-- `FIRMS_TTL=900` (15 minutes)
-- `EUMETSAT_TTL=1800` (30 minutes)
-- `S2_TTL=86400` (24 hours)
+    src/
+      main.py            # app factory, lifespan, CORS, rate limiting
+      api/               # route handlers (firms, eumetsat, sentinel,
+                         #   sentinel3, aoi, inference, dataset, …)
+      services/          # alerts, drift detection
+      db/                # SQLAlchemy models + async session
+      utils/             # config, http client, demo helpers, geo
+      static/            # index.html, app.js, styles.css, leaflet
+    ml/
+      inference/         # FirePredictor (MobileViT + multimodal)
+      models/            # 4-channel MobileViT and dual-encoder S2+S3
+      scripts/           # snapshot builder, tile renderer
+      training/          # training loops + checkpoints
+    data/snapshot/       # frozen demo bundle (only on hf-deploy)
 
 ## Development
 
-### Running Tests
+Run tests inside the container — the project assumes Docker for
+everything:
 
-**IMPORTANT**: All tests must be executed inside the Docker container:
+    docker-compose exec web uv run pytest
 
-```bash
-docker-compose exec web uv run pytest
-```
+Add a dependency:
 
-### Installing New Dependencies
+    docker-compose exec web uv add <package>
 
-Use `uv` only (never pip) inside the container:
+CI builds the Docker image, runs the suite, and fires a startup smoke
+test on every PR. The image build is parameterised by two args:
 
-```bash
-docker-compose exec web uv add <package-name>
-```
+- `INCLUDE_SNAPSHOT` (default `true`) — bundle `data/` and the
+  evaluation-metric JSONs. CI sets this to `false` because origin
+  doesn't carry the 190 MB demo snapshot.
+- `INCLUDE_MODEL` (default `false`) — keep the 58 MB
+  `best_model.pth` checkpoint inside the image. The demo doesn't need
+  it; live deploys do.
 
-### File Structure
+## Deploy
 
-```
-portugal-fire-detection/
-├── src/
-│   ├── main.py                 # FastAPI application entry
-│   ├── api/                    # API route handlers
-│   │   ├── firms.py
-│   │   ├── eumetsat.py
-│   │   ├── sentinel.py
-│   │   └── images.py
-│   ├── services/               # Business logic & external API calls
-│   │   ├── firms_service.py
-│   │   ├── eumetsat_service.py
-│   │   └── sentinel_service.py
-│   ├── models/                 # Pydantic models
-│   │   ├── fire.py
-│   │   ├── imagery.py
-│   │   └── geo.py
-│   ├── utils/                  # Shared utilities
-│   │   ├── config.py
-│   │   ├── http.py
-│   │   ├── caching.py
-│   │   ├── files.py
-│   │   ├── geo.py
-│   │   └── cleanup.py
-│   └── static/                 # Frontend assets
-│       ├── index.html
-│       ├── css/styles.css
-│       └── js/app.js
-├── data/                       # Local image storage (gitignored)
-│   ├── firms/
-│   ├── eumetsat/
-│   └── sentinel2/
-├── Dockerfile
-├── docker-compose.yml
-├── pyproject.toml
-└── .env
-```
+The Hugging Face Space mirrors a separate `hf-deploy` branch that
+bundles `data/snapshot/` (auto-LFS'd). To refresh the demo:
 
-## Data Storage
+    git checkout hf-deploy
+    git merge feat/public-demo               # or main
+    # regenerate data/snapshot/ if needed
+    git add data/snapshot/
+    git commit -m "snapshot: refresh"
+    git push hf hf-deploy:main
 
-Images and cached data are stored locally in `./data/`:
-- `data/firms/` - JSON cache files
-- `data/eumetsat/` - FRP PNG overlays
-- `data/sentinel2/` - Thumbnail images
+Origin stays lean — `data/` is gitignored on every other branch, so the
+snapshot can never sneak into a non-deploy commit.
 
-Files older than 14 days are automatically cleaned up when the scheduler is enabled.
+## Data sources
 
-## Troubleshooting
+All data is freely licensed for non-commercial research and reuse:
 
-### No fire detections showing
-- **This is often good news!** - It means Portugal has no active fires
-- Verify your FIRMS API key is correct in `.env`
-- Try increasing the time period (use dropdown to select "Last 30 days" or "Last 3 months")
-- Check the **Status** box at the bottom for detailed messages
-- Open browser console (F12) to see detailed logs
-- **Note**: FIRMS NRT data typically covers the last 7-10 days reliably. Historical data beyond that may be limited.
-
-### EUMETSAT FRP not loading
-- The public WMS endpoint may have availability issues
-- Check `EUMETSAT_WMS_URL` and `EUMETSAT_FRP_LAYER` configuration
-- Consider obtaining a token from EUMETSAT
-
-### Sentinel-2 thumbnails not appearing
-- Adjust cloud cover percentage (try higher values like 50%)
-- Increase search days (try 14 or 30 days)
-- Default Earth Search STAC may have different availability than Copernicus Data Space
+- [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) — VIIRS / MODIS
+  active fires
+- [EUMETSAT](https://view.eumetsat.int/) — Meteosat FRP-PIXEL
+- [Copernicus Data Space](https://dataspace.copernicus.eu/) — Sentinel-2
+  L2A, Sentinel-3 SLSTR L2 FRP
+- Tile labels for training were derived from FIRMS detections aligned
+  to Sentinel-2 patches; see `ml/training/`.
 
 ## License
 
-[Add your license here]
-
-## Contributing
-
-[Add contribution guidelines here]
+MIT — see `LICENSE`. Satellite data retains its original licensing.

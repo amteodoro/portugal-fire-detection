@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/static/css/styles.css"/>
 </head>
 <body>
+  <div id="demoBanner" class="demo-banner" style="display:none;"></div>
   <a href="#map" class="skip-link">Skip to map</a>
   <h1 class="sr-only">Portugal Fire Detection</h1>
   <nav class="navbar" aria-label="Main navigation">
@@ -84,7 +85,7 @@
           </label>
           <label>
             <strong>Time Period</strong>
-            <select id="fireDays">
+            <select id="fireDays" data-demo-disabled>
               <option value="1" selected>24 hours</option>
               <option value="2">2 days</option>
               <option value="3">3 days</option>
@@ -93,7 +94,7 @@
             </select>
           </label>
         </div>
-        <p class="info">FIRMS NRT data limited to 10 days max</p>
+        <p class="info" id="fireDaysInfo">FIRMS NRT data limited to 10 days max</p>
         <button id="refreshBtn">Refresh Fire Data</button>
         <button id="exportCsvBtn" class="outline">Export to CSV</button>
       </div>
@@ -116,25 +117,25 @@
         <div class="config-grid">
           <label>
             <strong>From</strong>
-            <input type="date" id="histStart" class="input-narrow"/>
+            <input type="date" id="histStart" class="input-narrow" data-demo-disabled/>
           </label>
           <label>
             <strong>To</strong>
-            <input type="date" id="histEnd" class="input-narrow"/>
+            <input type="date" id="histEnd" class="input-narrow" data-demo-disabled/>
           </label>
         </div>
         <div class="config-grid" style="margin-top:6px">
           <label>
             <strong>Source</strong>
-            <select id="histSource">
+            <select id="histSource" data-demo-disabled>
               <option value="">All</option>
               <option value="VIIRS">VIIRS</option>
               <option value="MODIS">MODIS</option>
             </select>
           </label>
         </div>
-        <button id="histSearchBtn" style="margin-top:8px">Search History</button>
-        <button id="histClearBtn" class="outline" style="margin-top:4px">Clear</button>
+        <button id="histSearchBtn" style="margin-top:8px" data-demo-disabled>Search History</button>
+        <button id="histClearBtn" class="outline" style="margin-top:4px" data-demo-disabled>Clear</button>
         <div id="histStatus" class="ml-loading" style="margin-top:6px;font-size:11px"></div>
       </div>
 
@@ -151,13 +152,13 @@
         <div class="search-controls">
           <label>
             Days
-            <input type="number" id="s2Days" min="1" max="30" value="7" class="input-narrow"/>
+            <input type="number" id="s2Days" min="1" max="30" value="7" class="input-narrow" data-demo-disabled/>
           </label>
           <label>
             Cloud %
-            <input type="number" id="s2Cloud" min="0" max="100" value="20" class="input-narrow"/>
+            <input type="number" id="s2Cloud" min="0" max="100" value="20" class="input-narrow" data-demo-disabled/>
           </label>
-          <button id="s2SearchBtn">Search</button>
+          <button id="s2SearchBtn" data-demo-disabled>Search</button>
         </div>
         <div id="s2Results"><p class="ml-loading">Search Sentinel-2 imagery using the controls above.</p></div>
       </div>

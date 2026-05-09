@@ -16,7 +16,9 @@ class TestHealthEndpoint:
         response = app_client.get("/api/health")
 
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        body = response.json()
+        assert body["status"] == "ok"
+        assert "demo" in body
 
 
 class TestConfigEndpoint:
@@ -159,8 +161,51 @@ class TestCORSHeaders:
         app = app_client.app
 
         # Check that CORSMiddleware is in the middleware stack
-        middleware_classes = [type(m.cls).__name__ if hasattr(m, 'cls') else type(m).__name__ 
+        middleware_classes = [type(m.cls).__name__ if hasattr(m, 'cls') else type(m).__name__
                               for m in app.user_middleware]
-        
+
         assert any('CORSMiddleware' in str(m) for m in app.user_middleware), \
             "CORSMiddleware should be configured"
+
+
+class TestDemoMode:
+    """Tests for DEMO_MODE flag in health endpoint."""
+
+    def test_health_reports_demo_false_by_default(self, app_client):
+        """Test health endpoint reports demo=False by default."""
+        r = app_client.get("/api/health")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "ok"
+        assert body["demo"] is False
+
+    def test_health_reports_demo_true_when_enabled(self):
+        """Test health endpoint reports demo=True when DEMO_MODE is enabled."""
+        # Mock the is_demo function to return True where it's imported
+        with patch("src.utils.demo.is_demo") as mock_is_demo:
+            mock_is_demo.return_value = True
+            from fastapi.testclient import TestClient
+            from src.main import app
+            with TestClient(app) as c:
+                r = c.get("/api/health")
+                assert r.json()["demo"] is True
+
+
+def test_static_assets_have_cache_control(app_client):
+    r = app_client.get("/static/index.html")
+    if r.status_code == 200:
+        assert "max-age" in r.headers.get("Cache-Control", "")
+
+
+def test_firms_responses_have_cache_control(app_client, monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "true")
+    import importlib
+    from src.utils import config as cfg
+    importlib.reload(cfg)
+    from src import main as main_mod
+    importlib.reload(main_mod)
+    from fastapi.testclient import TestClient
+    with TestClient(main_mod.app) as c:
+        r = c.get("/api/firms/viirs?days=1")
+        # In demo this returns an empty FC even with no snapshot file present
+        assert "max-age=300" in r.headers.get("Cache-Control", "")

@@ -1,3 +1,4 @@
+import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -5,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from starlette.responses import RedirectResponse
+from starlette.responses import HTMLResponse, RedirectResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -22,8 +23,12 @@ logger = logging.getLogger(__name__)
 def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        from src.utils.demo import is_demo
         checkpoint = settings.MODEL_CHECKPOINT_PATH
-        if Path(checkpoint).exists():
+        if is_demo():
+            app.state.predictor = None
+            logger.info("DEMO_MODE: skipping PyTorch model load")
+        elif Path(checkpoint).exists():
             try:
                 from ml.inference.predictor import FirePredictor
                 app.state.predictor = FirePredictor(checkpoint)
@@ -65,8 +70,63 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
     )
+
+    @app.middleware("http")
+    async def cache_headers(request, call_next):
+        response = await call_next(request)
+        # Never cache non-2xx — a cached 404/500 outlives the underlying
+        # condition and breaks the UI for hours after the fix lands.
+        if response.status_code >= 300:
+            return response
+        path = request.url.path
+        if path.startswith("/static/"):
+            response.headers.setdefault("Cache-Control", "public, max-age=86400")
+        elif path.startswith("/api/firms/"):
+            response.headers.setdefault("Cache-Control", "public, max-age=300")
+        elif path.startswith("/api/inference/metrics"):
+            response.headers.setdefault("Cache-Control", "public, max-age=300")
+        return response
+
+    def _demo_state() -> dict:
+        from src.utils.demo import is_demo
+        state: dict = {"demo": is_demo()}
+        if is_demo():
+            try:
+                from src.services.snapshot import read_manifest
+                m = read_manifest()
+                if m:
+                    state["snapshot_range"] = m.get("snapshot_range")
+                    state["counts"] = m.get("counts", {})
+            except Exception:
+                pass
+        return state
+
+    async def _serve_html(filename: str) -> HTMLResponse:
+        path = Path("src/static") / filename
+        html = path.read_text(encoding="utf-8")
+        inject = (
+            f"<script>window.__DEMO_STATE__ = {json.dumps(_demo_state())};</script>"
+            "<script src=\"/static/js/demo-init.js\" defer></script>"
+        )
+        html = html.replace("</head>", inject + "</head>", 1)
+        return HTMLResponse(html)
+
+    # Override specific HTML files BEFORE the StaticFiles mount so we can
+    # inject server-rendered demo state on every page load.
+    for _name in ("index.html", "dataset.html", "inference.html"):
+        async def _handler(filename: str = _name):
+            return await _serve_html(filename)
+        app.add_api_route(
+            f"/static/{_name}",
+            _handler,
+            methods=["GET"],
+            include_in_schema=False,
+        )
+
     if Path("data/samples").exists():
         app.mount("/static/samples", StaticFiles(directory="data/samples"), name="samples")
+    if Path("data/snapshot").exists():
+        app.mount("/static/snapshot", StaticFiles(directory="data/snapshot"), name="snapshot")
     app.mount("/static", StaticFiles(directory="src/static"), name="static")
 
     @app.get("/", include_in_schema=False)
@@ -75,7 +135,17 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     async def health():
-        return {"status": "ok"}
+        from src.utils.demo import is_demo
+        body = {"status": "ok", "demo": is_demo()}
+        if is_demo():
+            try:
+                from src.services.snapshot import read_manifest
+                manifest = read_manifest()
+                if manifest:
+                    body["snapshot_range"] = manifest.get("snapshot_range")
+            except ImportError:
+                pass
+        return body
 
     @app.get("/api/config")
     async def config():
@@ -96,15 +166,19 @@ def create_app() -> FastAPI:
     app.include_router(eumetsat.router, prefix="/api/eumetsat", tags=["EUMETSAT"])
     app.include_router(sentinel.router, prefix="/api/sentinel2", tags=["Sentinel-2"])
     app.include_router(images.router, prefix="/api/images", tags=["Images"])
-    app.include_router(dataset.router, prefix="/api/dataset", tags=["Dataset"])
-    app.include_router(dataset_summary.router, prefix="/api/dataset", tags=["Dataset"])
-    app.include_router(dataset_scenes.router, prefix="/api/dataset", tags=["Dataset"])
-    app.include_router(dataset_training.router, prefix="/api/dataset", tags=["Dataset"])
+    if not settings.DEMO_MODE:
+        app.include_router(dataset.router, prefix="/api/dataset", tags=["Dataset"])
+        app.include_router(dataset_summary.router, prefix="/api/dataset", tags=["Dataset"])
+        app.include_router(dataset_scenes.router, prefix="/api/dataset", tags=["Dataset"])
+        app.include_router(dataset_training.router, prefix="/api/dataset", tags=["Dataset"])
+    else:
+        from src.api import dataset_demo
+        app.include_router(dataset_demo.router, prefix="/api/dataset", tags=["Dataset (demo)"])
     app.include_router(inference.router, prefix="/api/inference", tags=["Inference"])
     app.include_router(sentinel3.router, prefix="/api/sentinel3", tags=["Sentinel-3"])
     app.include_router(aoi.router, prefix="/api/aoi", tags=["AOI"])
 
-    if settings.SCHEDULER_ENABLED:
+    if settings.SCHEDULER_ENABLED and not settings.DEMO_MODE:
         scheduler = AsyncIOScheduler(timezone=settings.TIMEZONE)
         firms.register_jobs(scheduler)
         eumetsat.register_jobs(scheduler)

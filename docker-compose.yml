@@ -1,7 +1,7 @@
 services:
   db:
     image: postgis/postgis:16-3.4
-    platform: linux/arm64/v8
+    platform: linux/amd64
     environment:
       POSTGRES_DB: fire_detection
       POSTGRES_USER: fire
@@ -34,8 +34,10 @@ services:
       - ./data:/app/data
       - ./ml:/app/ml
       - ./tests:/app/tests
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
     shm_size: '2gb'
-    command: uv run uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
 
 volumes:

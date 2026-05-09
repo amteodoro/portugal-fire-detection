@@ -20,6 +20,18 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    """Reset slowapi's in-memory rate limiter before each test so unrelated
+    tests don't bleed limit counters into one another."""
+    try:
+        from src.utils.limiter import limiter
+        limiter._storage.reset()
+    except Exception:
+        pass
+    yield
+
+
 @pytest.fixture(scope="session")
 def test_data_dir(tmp_path_factory) -> Path:
     """Create a temporary directory for test data."""

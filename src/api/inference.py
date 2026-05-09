@@ -9,6 +9,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from src.utils.limiter import limiter
+from src.utils.demo import is_demo
+from src.services import snapshot as snap
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,11 @@ PREDICTIONS_PATH = Path("ml/training/checkpoints/test_predictions.json")
 @limiter.limit("60/minute")
 async def inference_metrics(request: Request):
     """Return test-set evaluation metrics for the loaded model."""
+    if is_demo():
+        m = snap.read_metrics()
+        if m is None:
+            raise HTTPException(status_code=404, detail="No metrics in snapshot")
+        return m
     if not METRICS_PATH.exists():
         raise HTTPException(status_code=404, detail="Test metrics not yet computed. Run ml/scripts/evaluate_model.py first.")
     import json as _json
@@ -83,6 +90,32 @@ async def test_results(
     - limit: max items to return (default 20, max 100)
     - offset: pagination offset
     """
+    if is_demo():
+        data = snap.read_test_predictions()
+        if data is None:
+            raise HTTPException(status_code=404, detail="Not available in demo snapshot")
+        from collections import Counter
+        tiles = data.get("tiles", [])
+        counts = Counter(t["outcome"] for t in tiles)
+        if outcome:
+            valid_outcomes = {"tp", "fp", "fn", "tn"}
+            if outcome not in valid_outcomes:
+                raise HTTPException(status_code=400, detail=f"outcome must be one of {valid_outcomes}")
+            tiles = [t for t in tiles if t["outcome"] == outcome]
+        total = len(tiles)
+        # Demo serves the full bundled set so the prob-distribution and
+        # geo-distribution charts plot every test tile.
+        limit_eff = min(limit, 5000)
+        page = tiles[offset: offset + limit_eff]
+        return {
+            "model_version": data.get("model_version", "snapshot"),
+            "threshold": data.get("threshold", 0.5),
+            "counts": dict(counts),
+            "total_filtered": total,
+            "offset": offset,
+            "limit": limit_eff,
+            "tiles": page,
+        }
     if not PREDICTIONS_PATH.exists():
         raise HTTPException(
             status_code=404,
@@ -125,6 +158,12 @@ async def test_results(
 @limiter.limit("60/minute")
 async def model_info(request: Request):
     """Return full model metadata: type, training date, data stats, val/test metrics."""
+    if is_demo():
+        info = {"model_version": "snapshot", "demo": True}
+        m = snap.read_metrics()
+        if m:
+            info["test_metrics"] = m
+        return info
     predictor = getattr(request.app.state, "predictor", None)
     if predictor is None:
         raise HTTPException(status_code=503, detail="Inference model not loaded")
@@ -167,12 +206,22 @@ async def model_info(request: Request):
 @router.get("/status")
 @limiter.limit("60/minute")
 async def inference_status(request: Request):
+    if is_demo():
+        snapshot_tiles = len(snap.read_predictions().get("tiles", []))
+        return {
+            "loaded": False,
+            "demo": True,
+            "model_version": None,
+            "threshold": None,
+            "snapshot_tiles": snapshot_tiles,
+        }
     predictor = getattr(request.app.state, "predictor", None)
     if predictor is None:
-        return {"loaded": False, "model_version": None, "threshold": None}
+        return {"loaded": False, "demo": False, "model_version": None, "threshold": None}
     index = _get_tile_index()
     return {
         "loaded": True,
+        "demo": False,
         "model_version": predictor.model_version,
         "threshold": predictor.threshold,
         "tiles_indexed": len(index),
@@ -182,6 +231,32 @@ async def inference_status(request: Request):
 @router.post("/predict")
 @limiter.limit("20/minute")
 async def predict(request: Request, body: PredictRequest):
+    if is_demo():
+        # No model loaded; resolve to a snapshot prediction.
+        pred = None
+        if body.tile_id:
+            pred = snap.find_prediction_by_id(body.tile_id)
+        if pred is None and body.lat is not None and body.lon is not None:
+            pred = snap.find_nearest_prediction(body.lat, body.lon)
+        if pred is None:
+            raise HTTPException(
+                status_code=503,
+                detail="No demo predictions available",
+            )
+        return {
+            "tile_id": pred["tile_id"],
+            "tile_lat": pred["lat"],
+            "tile_lon": pred["lon"],
+            "fire_probability": pred["fire_probability"],
+            "is_fire": pred.get("is_fire", pred["fire_probability"] >= 0.5),
+            "confidence": pred["fire_probability"],
+            "model_version": "snapshot",
+            "source": "demo_snapshot",
+            "scene_date": pred.get("scene_date"),
+            "cloud_cover": pred.get("cloud_cover"),
+            "note": "Demo mode — pre-computed prediction from snapshot",
+        }
+
     predictor = getattr(request.app.state, "predictor", None)
     if predictor is None:
         raise HTTPException(status_code=503, detail="Inference model not loaded")
@@ -243,6 +318,13 @@ async def tile_image(request: Request, tile_id: str, size: int = 256):
     Renders SWIR2→R, NIR→G, Red→B (fires appear bright red/white).
     Optional ?size= param (128–512, default 256).
     """
+    if is_demo():
+        from fastapi.responses import FileResponse
+        png = snap.tile_png_path(tile_id)
+        if png is None:
+            raise HTTPException(status_code=404, detail=f"Tile not found: {tile_id}")
+        return FileResponse(png, media_type="image/png",
+                            headers={"Cache-Control": "public, max-age=86400"})
     if not _SAFE_TILE_ID_RE.match(tile_id):
         raise HTTPException(status_code=400, detail="Invalid tile_id")
     size = max(128, min(size, 512))
@@ -300,6 +382,11 @@ async def tile_image(request: Request, tile_id: str, size: int = 256):
 @limiter.limit("30/minute")
 async def roc_data(request: Request):
     """Return (fpr, tpr) arrays for drawing the ROC curve, plus threshold array."""
+    if is_demo():
+        data = snap.read_test_predictions()
+        if data is None:
+            raise HTTPException(status_code=404, detail="Not available in demo snapshot")
+        return data.get("roc", {"fpr": [], "tpr": [], "thresholds": [], "auc": None})
     if not PREDICTIONS_PATH.exists():
         raise HTTPException(status_code=404, detail="Predictions not yet computed")
     import json as _json

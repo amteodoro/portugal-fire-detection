@@ -7,6 +7,21 @@ function debounce(fn, wait) {
   };
 }
 
+// Demo mode initialization — reads server-rendered window.__DEMO_STATE__
+// (set by demo-init.js, which runs on every page load before app.js).
+// The banner and demo-disabled controls are already wired by demo-init.js;
+// this function only handles app.js-specific state.
+function initDemoMode() {
+  if (!window.__DEMO__) return;
+  // Disable AOI write actions (the draw button is rendered by Leaflet,
+  // so it isn't reachable via [data-demo-disabled] in HTML).
+  const drawBtn = document.getElementById('aoiDrawBtn');
+  if (drawBtn) {
+    drawBtn.classList.add('demo-disabled');
+    drawBtn.title = 'Disabled in demo mode';
+  }
+}
+
 // FIRMS response cache keyed by "product:days:bbox"
 const _firmsCache = new Map();
 
@@ -1171,5 +1186,8 @@ map.on(L.Draw ? L.Draw.Event.CREATED : 'draw:created', async (e) => {
 });
 
 // Start the application
-initializeApp();
-loadAOIList();
+(async () => {
+  initDemoMode();
+  initializeApp();
+  loadAOIList();
+})();

@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASS: str = ""
     FROM_EMAIL: str = "alerts@fire-detection.local"
+    DEMO_MODE: bool = False
+    SNAPSHOT_DIR: str = "data/snapshot"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

@@ -183,3 +183,176 @@ class TestFirmsServiceProducts:
         assert "MODIS" in PRODUCTS
         assert PRODUCTS["VIIRS"] == "VIIRS_SNPP_NRT"
         assert PRODUCTS["MODIS"] == "MODIS_NRT"
+
+
+import json
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture
+def fake_snapshot(tmp_path, monkeypatch):
+    """Create a minimal snapshot directory and point SNAPSHOT_DIR at it."""
+    snap = tmp_path / "snapshot"
+    (snap / "firms").mkdir(parents=True)
+    (snap / "sentinel2/thumbnails").mkdir(parents=True)
+    (snap / "sentinel3").mkdir(parents=True)
+    (snap / "tiles").mkdir(parents=True)
+
+    (snap / "manifest.json").write_text(json.dumps({
+        "frozen_at": "2026-05-06T10:00:00Z",
+        "snapshot_range": {"start": "2024-08-12", "end": "2024-08-19"},
+        "regions": ["mainland"],
+        "fire_count": {"viirs": 2, "modis": 1, "sentinel3": 0},
+        "tile_count": 1,
+        "model_version": "best_model.pth",
+    }))
+    (snap / "firms/viirs_mainland.geojson").write_text(json.dumps({
+        "type": "FeatureCollection",
+        "features": [
+            {"type": "Feature",
+             "geometry": {"type": "Point", "coordinates": [-7.5, 39.5]},
+             "properties": {"source": "VIIRS", "frp": 12.3,
+                            "confidence": 90, "acq_time": "2024-08-15T12:30:00Z",
+                            "id": "v1"}},
+        ],
+    }))
+    (snap / "tiles/predictions.json").write_text(json.dumps({
+        "tiles": [
+            {"tile_id": "tile_001", "lat": 39.5, "lon": -7.5,
+             "fire_probability": 0.97, "is_fire": True, "y_true": 1,
+             "outcome": "tp", "scene_date": "2024-08-15", "cloud_cover": 5.0},
+        ],
+    }))
+    (snap / "aois.json").write_text(json.dumps([
+        {"id": "00000000-0000-0000-0000-000000000001",
+         "name": "Demo AOI - Aveiro region",
+         "email": None,
+         "created_at": "2024-08-10T00:00:00Z",
+         "active": True,
+         "boundary": {"type": "Polygon",
+                      "coordinates": [[[-9, 39], [-8, 39], [-8, 40], [-9, 40], [-9, 39]]]}},
+    ]))
+
+    monkeypatch.setenv("SNAPSHOT_DIR", str(snap))
+    import importlib
+    from src.utils import config as cfg
+    importlib.reload(cfg)
+    from src.services import snapshot as snap_mod
+    importlib.reload(snap_mod)
+    return snap_mod
+
+
+def test_read_manifest(fake_snapshot):
+    m = fake_snapshot.read_manifest()
+    assert m["snapshot_range"]["start"] == "2024-08-12"
+
+
+def test_read_firms_returns_geojson(fake_snapshot):
+    fc = fake_snapshot.read_firms("VIIRS", "mainland")
+    assert fc["type"] == "FeatureCollection"
+    assert len(fc["features"]) == 1
+    assert fc["features"][0]["properties"]["source"] == "VIIRS"
+
+
+def test_read_firms_missing_file_returns_empty(fake_snapshot):
+    fc = fake_snapshot.read_firms("MODIS", "azores")
+    assert fc == {"type": "FeatureCollection", "features": []}
+
+
+def test_read_predictions(fake_snapshot):
+    preds = fake_snapshot.read_predictions()
+    assert len(preds["tiles"]) == 1
+    assert preds["tiles"][0]["tile_id"] == "tile_001"
+
+
+def test_find_nearest_prediction(fake_snapshot):
+    pred = fake_snapshot.find_nearest_prediction(lat=39.51, lon=-7.51)
+    assert pred["tile_id"] == "tile_001"
+
+
+def test_find_nearest_prediction_empty(fake_snapshot, tmp_path):
+    # Wipe predictions and re-read
+    (tmp_path / "snapshot/tiles/predictions.json").write_text('{"tiles": []}')
+    import importlib
+    from src.services import snapshot as snap_mod
+    importlib.reload(snap_mod)
+    assert snap_mod.find_nearest_prediction(lat=0, lon=0) is None
+
+
+def test_read_aois(fake_snapshot):
+    aois = fake_snapshot.read_aois()
+    assert len(aois) == 1
+    assert aois[0]["name"].startswith("Demo AOI")
+
+
+import sqlite3
+from datetime import datetime
+
+
+@pytest.fixture
+def fake_history_db(tmp_path, monkeypatch):
+    snap = tmp_path / "snapshot"
+    snap.mkdir()
+    db = snap / "fires.sqlite"
+    conn = sqlite3.connect(db)
+    conn.execute("""
+      CREATE TABLE fire_events (
+        id INTEGER PRIMARY KEY,
+        source TEXT, detected_at TEXT,
+        lat REAL, lon REAL,
+        frp REAL, confidence TEXT, region TEXT
+      )
+    """)
+    rows = [
+      (None, "VIIRS", "2024-08-15T12:30:00Z", 39.5, -7.5, 12.0, "90", "mainland"),
+      (None, "MODIS", "2024-08-10T11:00:00Z", 40.0, -8.0,  8.0, "70", "mainland"),
+      (None, "VIIRS", "2024-08-15T13:00:00Z", 40.5, -16.5, 5.0, "60", "azores"),
+    ]
+    conn.executemany(
+      "INSERT INTO fire_events VALUES (?,?,?,?,?,?,?,?)", rows
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv("SNAPSHOT_DIR", str(snap))
+    import importlib
+    from src.utils import config as cfg
+    importlib.reload(cfg)
+    from src.services import snapshot as snap_mod
+    importlib.reload(snap_mod)
+    return snap_mod
+
+
+async def test_read_history_filters_by_date(fake_history_db):
+    fc = await fake_history_db.read_history(
+        start="2024-08-15", end="2024-08-15"
+    )
+    assert len(fc["features"]) == 2  # both 8/15 entries
+
+
+async def test_read_history_filters_by_source(fake_history_db):
+    fc = await fake_history_db.read_history(
+        start="2024-08-01", end="2024-08-31", source="MODIS"
+    )
+    assert len(fc["features"]) == 1
+    assert fc["features"][0]["properties"]["source"] == "MODIS"
+
+
+async def test_read_history_filters_by_bbox(fake_history_db):
+    # Mainland-only bbox excludes the azores point
+    fc = await fake_history_db.read_history(
+        start="2024-08-01", end="2024-08-31",
+        bbox=(-10.0, 36.0, -6.0, 42.0),
+    )
+    sources = [f["properties"]["source"] for f in fc["features"]]
+    assert "VIIRS" in sources and "MODIS" in sources
+    assert len(fc["features"]) == 2
+
+
+async def test_read_history_respects_limit(fake_history_db):
+    fc = await fake_history_db.read_history(
+        start="2024-08-01", end="2024-08-31", limit=1
+    )
+    assert len(fc["features"]) == 1

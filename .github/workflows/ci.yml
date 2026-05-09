@@ -31,13 +31,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildx-
 
-      - name: Build Docker image
+      - name: Build test image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: false
           load: true
-          tags: portugal-fire-detection:ci
+          target: test
+          tags: portugal-fire-detection:test
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
 
@@ -49,10 +50,10 @@ jobs:
       - name: Run tests
         run: |
           docker run --rm \
+            -e DEMO_MODE=false \
             -e FIRMS_API_KEY="" \
             -e SCHEDULER_ENABLED=false \
-            portugal-fire-detection:ci \
-            uv run pytest --tb=short -q
+            portugal-fire-detection:test
 
   docker-smoke:
     name: Docker Startup Smoke Test
@@ -62,17 +63,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+          df -h
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image
-        run: docker build -t portugal-fire-detection:smoke .
+        run: docker build --build-arg INCLUDE_SNAPSHOT=false -t portugal-fire-detection:smoke .
 
       - name: Start container and health check
         run: |
           docker run --rm -d \
             --name fire-smoke \
             -p 8000:8000 \
+            -e DEMO_MODE=false \
             -e FIRMS_API_KEY="" \
             -e SCHEDULER_ENABLED=false \
             portugal-fire-detection:smoke
@@ -89,3 +97,11 @@ jobs:
       - name: Stop container
         if: always()
         run: docker stop fire-smoke || true
+
+# HF Space deploys are intentionally manual — the snapshot bundle lives
+# on the `hf-deploy` branch, which is never pushed to origin to keep
+# this repo lean. To deploy:
+#
+#   git checkout hf-deploy
+#   git merge main
+#   git push hf hf-deploy:main

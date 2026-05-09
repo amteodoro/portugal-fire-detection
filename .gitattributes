@@ -1,0 +1,5 @@
+data/snapshot/**/*.npy   filter=lfs diff=lfs merge=lfs -text
+data/snapshot/**/*.png   filter=lfs diff=lfs merge=lfs -text
+data/snapshot/**/*.jpg   filter=lfs diff=lfs merge=lfs -text
+data/snapshot/**/*.jpeg  filter=lfs diff=lfs merge=lfs -text
+data/snapshot/**/*.sqlite filter=lfs diff=lfs merge=lfs -text
